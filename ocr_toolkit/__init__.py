@@ -1,4 +1,4 @@
-"""lambda-ocr: PDF/画像スキャン → 高精度OCR → 構造化データ パイプライン"""
+"""ScanToXlsxStarter: PDF/画像スキャン → 高精度OCR → 構造化データ パイプライン"""
 __version__ = "0.1.0"
 
 from .fix_ocr import fix_ocr, OCR_FIXES

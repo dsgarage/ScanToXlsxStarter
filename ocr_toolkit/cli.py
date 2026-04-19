@@ -1,4 +1,4 @@
-"""lambda-ocr CLI: PDF→OCRテキスト までを一括実行する。
+"""ScanToXlsxStarter CLI: PDF→OCRテキスト までを一括実行する。
 
 Usage:
     python -m ocr_toolkit.cli pdf2png input.pdf out/images/
@@ -74,7 +74,7 @@ def _cmd_run(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="lambda-ocr")
+    p = argparse.ArgumentParser(prog="ScanToXlsxStarter")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("pdf2png", help="PDF→PNG変換(pdftoppm)")

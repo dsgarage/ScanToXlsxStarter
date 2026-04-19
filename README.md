@@ -1,4 +1,4 @@
-# lambda-ocr
+# ScanToXlsxStarter
 
 **書籍スキャン・画像 → 高精度日本語OCR → 構造化データ** を1コマンドで。
 
@@ -47,8 +47,8 @@ PaddleOCR出力に残るわずかな誤字は `fix_ocr()` で吸収できる。
 リポジトリ取得と環境構築:
 
 ```bash
-git clone https://github.com/dsgarage/lambda-ocr.git
-cd lambda-ocr
+git clone https://github.com/dsgarage/ScanToXlsxStarter.git
+cd ScanToXlsxStarter
 ./setup.sh
 ```
 
@@ -76,7 +76,7 @@ python -m ocr_toolkit.cli run configs/my_project.yaml
 venv を都度activateしたくない場合は、直接パスで呼び出します:
 
 ```bash
-~/Documents/dsgarageScript/lambda-ocr/.venv_paddleocr/bin/python \
+~/Documents/dsgarageScript/ScanToXlsxStarter/.venv_paddleocr/bin/python \
   -m ocr_toolkit.cli ocr images/ ocr/
 ```
 
@@ -135,14 +135,14 @@ clean = fix_ocr(raw, extra_fixes={"半的感覚": "美的感覚"})
 `.claude/skills/scan-ocr/SKILL.md` が同梱されています。`~/.claude/skills/scan-ocr/` にシンボリックリンクするか、リポジトリ直下の `.claude/` が自動的に認識されます。
 
 Claude に自然言語で依頼できます:
-> *「このPDFを lambda-ocr でOCRして、XLSX化して」*
+> *「このPDFを ScanToXlsxStarter でOCRして、XLSX化して」*
 
 ---
 
 ## ディレクトリ構成
 
 ```
-lambda-ocr/
+ScanToXlsxStarter/
 ├── .claude/
 │   └── skills/
 │       └── scan-ocr/

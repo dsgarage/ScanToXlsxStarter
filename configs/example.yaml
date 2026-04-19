@@ -1,4 +1,4 @@
-# lambda-ocr 設定ファイルの例
+# ScanToXlsxStarter 設定ファイルの例
 # `python -m ocr_toolkit.cli run path/to/this.yaml` で使用
 #
 # すべてのパスは config.yaml の位置を基準にした相対パスとして解釈される。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lambda-ocr setup script
+# ScanToXlsxStarter setup script
 # Apple Silicon macOS 向け: PaddleOCR をセットアップする専用venvを作成
 #
 # Usage:
