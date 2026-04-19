@@ -1,0 +1,20 @@
+# lambda-ocr 設定ファイルの例
+# `python -m ocr_toolkit.cli run path/to/this.yaml` で使用
+#
+# すべてのパスは config.yaml の位置を基準にした相対パスとして解釈される。
+
+pdf:
+  path: input.pdf         # 入力PDFのパス
+  first_page: 1           # 開始ページ(1始まり)
+  last_page: null         # null=最後まで
+  dpi: 300                # 書籍スキャンには300推奨
+  prefix: page            # 出力ファイル名接頭辞: page-001.png ...
+
+images_dir: images        # pdf2pngの出力先
+ocr_dir: ocr              # OCR結果の保存先
+
+ocr:
+  lang: japan             # paddleocr の lang パラメータ
+  workers: null           # null=auto (cpu_count と 6 の小さい方)
+  use_mobile: true        # false にすると server モデル(高精度・低速)
+  glob: "*.png"

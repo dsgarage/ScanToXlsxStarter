@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+build/
+dist/
+
+# Virtual env
+.venv/
+venv/
+.venv_paddleocr/
+env/
+
+# PaddleOCR model cache
+.paddlex/
+.paddleocr/
+
+# Generated artifacts (each project should ignore its own)
+*.pdf
+*.xlsx
+*.xls
+images/
+crops/
+ocr/
+*.log
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
