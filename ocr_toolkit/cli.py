@@ -41,6 +41,32 @@ def _cmd_ocr(args) -> int:
     return 0
 
 
+def _cmd_progress(args) -> int:
+    """toc.yaml + state.yaml から進捗テーブルを表示。"""
+    from .progress import load_toc, load_state, render_status_table, summary_counts
+
+    toc_path = Path(args.toc)
+    state_path = Path(args.state) if args.state else toc_path.with_name("state.yaml")
+    toc = load_toc(toc_path)
+    state = load_state(state_path)
+
+    print(f"# {toc.book}")
+    print(f"toc:   {toc_path}")
+    print(f"state: {state_path}{' (未生成)' if not state_path.exists() else ''}")
+    print()
+    print(render_status_table(toc, state))
+    print()
+
+    counts = summary_counts(toc, state)
+    print("--- summary ---")
+    for stage, c in counts.items():
+        done = c.get("done", 0) + c.get("skipped", 0)
+        total = sum(c.values())
+        print(f"  {stage:10}  {done}/{total}  done={c.get('done',0)} skip={c.get('skipped',0)} "
+              f"prog={c.get('in_progress',0)} pend={c.get('pending',0)} fail={c.get('failed',0)}")
+    return 0
+
+
 def _cmd_run(args) -> int:
     """config.yaml の手順に従って PDF→PNG→OCR を実行(簡易版)"""
     import yaml
@@ -100,6 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("run", help="config.yamlでPDF→PNG→OCRを実行")
     sp.add_argument("config")
     sp.set_defaults(func=_cmd_run)
+
+    sp = sub.add_parser("progress", help="toc.yaml/state.yaml から進捗を表示")
+    sp.add_argument("toc", help="toc.yaml のパス")
+    sp.add_argument("--state", help="state.yaml パス (デフォルト: toc.yaml と同じディレクトリ)")
+    sp.set_defaults(func=_cmd_progress)
 
     return p
 
