@@ -68,6 +68,26 @@ text = open("ocr/page-001.txt").read()
 cleaned = fix_ocr(text, extra_fixes={"半的感覚": "美的感覚"})
 ```
 
+### 5. 完成 XLSX の後校正
+
+既に構造化済みの XLSX を **シート単位で LLM 校正辞書で後校正** できる (`ocr_toolkit.xlsx_corrections`)。
+
+```bash
+# ドライランで件数/差分確認
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --dry-run
+
+# 比較 XLSX を出力してレビュー
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --preview preview.xlsx --dry-run
+
+# 本適用 (変更セルは薄黄でハイライト)
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --out book.corrected.xlsx
+```
+
+校正辞書は `CORRECTIONS = {(key_tuple): {field: "修正後"}}` 形式の Python モジュールで、シート毎に 1 ファイル作る運用。詳細は `examples/xlsx_corrections_workflow.md`。
+
 ## 精度の目安
 
 Tesseract vs PaddleOCR(日本語書籍スキャン300dpi)の誤字:

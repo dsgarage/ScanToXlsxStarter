@@ -1,5 +1,5 @@
 """ScanToXlsxStarter: PDF/画像スキャン → 高精度OCR → 構造化データ パイプライン"""
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .fix_ocr import fix_ocr, OCR_FIXES
 from .paddle_ocr import BatchOCR
@@ -72,4 +72,6 @@ __all__ = [
     "STAGE_COSTS",
 ]
 
-# preview はオプション (openpyxl 依存)。明示 import で利用可能。
+# preview / xlsx_corrections はオプション (openpyxl 依存)。明示 import で利用可能。
+#   from ocr_toolkit.preview import write_comparison
+#   from ocr_toolkit.xlsx_corrections import apply_to_xlsx, preview_xlsx_corrections
