@@ -41,3 +41,6 @@ ocr/
 *.pem
 *.key
 secrets/
+
+# Apple Silicon PaddleOCR venv (setup.sh で再生成可能)
+.venv_paddleocr
