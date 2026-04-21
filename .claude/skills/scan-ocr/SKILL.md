@@ -88,6 +88,18 @@ python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
 
 校正辞書は `CORRECTIONS = {(key_tuple): {field: "修正後"}}` 形式の Python モジュールで、シート毎に 1 ファイル作る運用。詳細は `examples/xlsx_corrections_workflow.md`。
 
+### 6. 書籍一括校正 (sheets.yaml)
+
+1 書籍 = 複数シートを宣言的に一括校正する上位コマンド。
+
+```bash
+# sheets.yaml を書籍ディレクトリに置いて
+python -m ocr_toolkit.cli xlsx-correct-book sheets.yaml --dry-run
+python -m ocr_toolkit.cli xlsx-correct-book sheets.yaml   # 本適用
+```
+
+校正辞書は `corrections/<sheet_name>/llm_corrections_*.py` の規約で配置。詳細は `examples/xlsx_corrections_full_book.md`。
+
 ## 精度の目安
 
 Tesseract vs PaddleOCR(日本語書籍スキャン300dpi)の誤字:

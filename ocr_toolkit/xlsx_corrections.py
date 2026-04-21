@@ -35,11 +35,13 @@ except ImportError as e:  # pragma: no cover
         "xlsx_corrections.py は openpyxl に依存します。`pip install openpyxl` してください。"
     ) from e
 
+from .book_config import BookConfig, SheetConfig, load_book_config
 from .corrections import (
     CorrectionError,
     Corrections,
     apply_corrections,
     diff_summary,
+    load_merged,
     validate,
 )
 
@@ -293,9 +295,193 @@ def preview_xlsx_corrections(
     )
 
 
+# ------------------------------------------------------------
+# 書籍一括校正 (sheets.yaml ベース)
+# ------------------------------------------------------------
+
+def apply_book(
+    config: BookConfig | str | Path,
+    *,
+    dry_run: bool = False,
+    preview_dir: str | Path | None = None,
+    out_path: str | Path | None = None,
+    highlight: bool = True,
+) -> dict[str, Any]:
+    """書籍の sheets.yaml に基づいて enabled な全シートに校正を適用する。
+
+    Args:
+        config: BookConfig か sheets.yaml のパス。
+        dry_run: True なら保存せず件数のみ集計。
+        preview_dir: 指定時、シート毎に <preview_dir>/<sheet>_diff.xlsx を出力。
+        out_path: 出力 XLSX。None なら BookConfig.xlsx を上書き。
+            dry_run=True のときも入力 XLSX は一切触らない。
+        highlight: 変更セルをハイライトするか。
+
+    Returns:
+        {
+            "<sheet_name>": {<apply_to_xlsx summary>},
+            ...,
+            "_total": {"sheets_processed": N, "cells_changed": M, "matched": K, ...},
+        }
+
+    Notes:
+        校正は in-memory で順次積み上がり、全シート処理後に 1 回だけ保存する
+        (openpyxl は複数シートを同じ wb に保持するため効率的)。
+    """
+    if not isinstance(config, BookConfig):
+        config = load_book_config(config)
+
+    src_xlsx = config.xlsx
+    if not src_xlsx.exists():
+        raise FileNotFoundError(f"XLSX が見つかりません: {src_xlsx}")
+
+    dst_xlsx = Path(out_path) if out_path else src_xlsx
+
+    preview_dir = Path(preview_dir) if preview_dir else None
+    if preview_dir:
+        preview_dir.mkdir(parents=True, exist_ok=True)
+
+    # 書籍 XLSX を 1 回だけ開いて、シート毎に差し替える
+    wb = openpyxl.load_workbook(src_xlsx)
+
+    reports: dict[str, Any] = {}
+    total = {
+        "sheets_processed": 0,
+        "sheets_skipped": 0,
+        "rows": 0,
+        "matched": 0,
+        "applied": 0,
+        "cells_changed": 0,
+    }
+
+    for sheet in config.enabled_sheets():
+        if sheet.name not in wb.sheetnames:
+            reports[sheet.name] = {"error": "シートが存在しません", "skipped": True}
+            total["sheets_skipped"] += 1
+            continue
+
+        corr_dir = config.sheet_corrections_dir(sheet)
+        if not corr_dir.exists():
+            reports[sheet.name] = {"corrections_dir": str(corr_dir), "loaded_files": 0, "skipped": True}
+            total["sheets_skipped"] += 1
+            continue
+
+        corr_paths = sorted(corr_dir.glob(sheet.glob))
+        if not corr_paths:
+            reports[sheet.name] = {"corrections_dir": str(corr_dir), "loaded_files": 0, "skipped": True}
+            total["sheets_skipped"] += 1
+            continue
+
+        corrections = load_merged(corr_paths)
+        if not corrections:
+            reports[sheet.name] = {"corrections_dir": str(corr_dir), "loaded_files": len(corr_paths), "entries": 0, "skipped": True}
+            total["sheets_skipped"] += 1
+            continue
+
+        # preview XLSX (任意)
+        if preview_dir is not None:
+            preview_xlsx_corrections(
+                src_xlsx, sheet.name, corrections,
+                key_fields=tuple(sheet.key_cols),
+                output=preview_dir / f"{sheet.name}_diff.xlsx",
+            )
+
+        # wb 上のシートに対して in-memory で apply (src_xlsx を再オープンしない)
+        summary = _apply_in_workbook(
+            wb, sheet.name, corrections,
+            key_fields=tuple(sheet.key_cols),
+            highlight=highlight,
+            dry_run=dry_run,
+        )
+        summary["loaded_files"] = len(corr_paths)
+        summary["entries"] = len(corrections)
+        reports[sheet.name] = summary
+
+        total["sheets_processed"] += 1
+        for k in ("rows", "matched", "applied", "cells_changed"):
+            total[k] += summary.get(k, 0)
+
+    if not dry_run:
+        wb.save(dst_xlsx)
+
+    reports["_total"] = total
+    return reports
+
+
+def _apply_in_workbook(
+    wb: "openpyxl.Workbook",
+    sheet_name: str,
+    corrections: Corrections,
+    *,
+    key_fields: Sequence[str],
+    header_row: int = 1,
+    highlight: bool = True,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """既に開いている workbook に対して 1 シート分の校正を適用する内部関数。
+
+    apply_to_xlsx とロジックは同じだが、wb を引数で受けるので複数シート処理時に
+    load_workbook/save を繰り返さずに済む。
+    """
+    ws: Worksheet = wb[sheet_name]
+    raw_headers = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
+    headers = [("" if h is None else str(h)) for h in raw_headers]
+    header_set = {h for h in headers if h}
+
+    validate(corrections, allowed_fields=header_set)
+    for f in key_fields:
+        if f not in header_set:
+            raise CorrectionError(f"{sheet_name}: key_fields '{f}' がシートヘッダに存在しません: {sorted(header_set)}")
+
+    col_index = {h: i + 1 for i, h in enumerate(headers) if h}
+    key_fn = _make_key_fn(key_fields)
+
+    rows: list[dict[str, Any]] = []
+    for raw in ws.iter_rows(min_row=header_row + 1, values_only=True):
+        row = {h: v for h, v in zip(headers, raw) if h}
+        if any(v not in (None, "") for v in row.values()):
+            rows.append(row)
+
+    before_by_key: dict[Any, dict[str, Any]] = {
+        key_fn(r): {f: r.get(f) for f in header_set} for r in rows
+    }
+    result = apply_corrections(rows, corrections, key_fn=key_fn, dry_run=dry_run)
+    matched_keys = {key_fn(r) for r in rows if key_fn(r) in corrections}
+    unmatched_keys = [k for k in corrections if k not in matched_keys]
+    fields_changed = diff_summary(before_by_key, corrections)
+    cells_changed = sum(fields_changed.values())
+
+    if not dry_run:
+        for excel_row_idx, row in enumerate(rows, start=header_row + 1):
+            k = key_fn(row)
+            patch = corrections.get(k)
+            if not patch:
+                continue
+            for field, new_val in patch.items():
+                col = col_index.get(field)
+                if col is None:
+                    continue
+                cell = ws.cell(row=excel_row_idx, column=col)
+                if (cell.value or "") == (new_val or ""):
+                    continue
+                cell.value = new_val
+                if highlight:
+                    cell.fill = FILL_CHANGED
+
+    return {
+        "rows": result.get("total", 0),
+        "matched": result.get("matched", 0),
+        "applied": result.get("applied", 0),
+        "cells_changed": cells_changed,
+        "fields": fields_changed,
+        "unmatched_keys": unmatched_keys,
+    }
+
+
 __all__ = [
     "load_sheet_rows",
     "apply_to_xlsx",
     "preview_xlsx_corrections",
+    "apply_book",
     "FILL_CHANGED",
 ]
