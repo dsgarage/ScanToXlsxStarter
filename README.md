@@ -140,31 +140,37 @@ Claude に自然言語で依頼できます:
 ### E. OCR 後の LLM 文脈校正パイプライン
 
 `fix_ocr()` の辞書置換で直らない **「文として成立しない」レベルの崩壊** は、Claude Opus の文脈推論で復元します。
+v0.3.0 から **suspicion 事前フィルタ** が加わり、LLM に送る前に「機械的に直せる行」を除外できます (トークン消費 ~70% 削減)。
 
 ```python
 from ocr_toolkit import (
-    fix_ocr,            # 事前の文字列置換
-    load_merged,        # 校正辞書ファイルのマージロード
-    validate,           # 校正辞書の妥当性チェック
-    apply_corrections,  # 行データへの校正適用
+    fix_ocr,                    # 事前の文字列置換
+    partition_by_threshold,     # 崩壊スコアで pre-filter (★ v0.3.0)
+    load_merged,                # 校正辞書ファイルのマージロード
+    validate,                   # 校正辞書の妥当性チェック
+    apply_corrections,          # 行データへの校正適用
 )
 from ocr_toolkit.preview import write_comparison  # 比較 XLSX 生成
 
+# 0) fix_ocr で簡体字/促音/末尾ノイズを機械処理 → suspicion で LLM 対象を抽出
+processed = [{**r, "leadText": fix_ocr(r["leadText"])} for r in raw_rows]
+suspicious, clean = partition_by_threshold(
+    processed, text_fields=("lead", "leadText"), threshold=0.10,
+)
+# suspicious だけを LLM に投入 (clean は fix_ocr のみで採用)
+
 # 1) 校正辞書を統合
-merged = load_merged([
-    "llm_corrections_batch1.py",
-    "llm_corrections_batch2.py",
-])
+merged = load_merged(["llm_corrections_batch1.py", "llm_corrections_batch2.py"])
 validate(merged, allowed_fields={"lead", "leadText"})
 
 # 2) 本番 DB / 出力先に適用 (DB 操作は呼び出し側 callback)
-apply_corrections(rows, merged, key_fn=lambda r: (r["month"], r["day"]))
+apply_corrections(processed, merged, key_fn=lambda r: (r["month"], r["day"]))
 
 # 3) 比較 XLSX で目視レビュー
 write_comparison(output="preview.xlsx", rows=..., fields=("lead", "leadText"))
 ```
 
-詳細な運用手順 (並列エージェント設定・タイムアウト回避・バッチサイズ) は [`examples/llm_cleanup_workflow.md`](examples/llm_cleanup_workflow.md) を参照。
+詳細な運用手順 (suspicion 閾値・並列エージェント設定・タイムアウト回避) は [`examples/llm_cleanup_workflow.md`](examples/llm_cleanup_workflow.md) を参照。
 
 ---
 
