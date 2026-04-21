@@ -92,6 +92,54 @@ def _cmd_xlsx_correct(args) -> int:
     return 0
 
 
+def _cmd_xlsx_correct_book(args) -> int:
+    """sheets.yaml に基づいて書籍 XLSX の全 enabled シートに校正を適用する。"""
+    from .xlsx_corrections import apply_book
+    from .book_config import load_book_config
+
+    config = load_book_config(args.config)
+    print(f"# 書籍: {config.xlsx}")
+    print(f"# corrections_dir: {config.corrections_dir}")
+    enabled = config.enabled_sheets()
+    print(f"# 対象シート: {len(enabled)}/{len(config.sheets)} (enabled)")
+    for s in config.sheets:
+        flag = "✓" if s.enabled else "-"
+        key = ",".join(s.key_cols) if s.key_cols else "(none)"
+        print(f"  {flag} {s.name}  key_cols=[{key}]")
+    print()
+
+    reports = apply_book(
+        config,
+        dry_run=args.dry_run,
+        preview_dir=args.preview_dir,
+        out_path=args.out,
+        highlight=not args.no_highlight,
+    )
+    total = reports.pop("_total")
+
+    # シート毎の結果を表で表示
+    header = f"{'sheet':<24} {'files':>5} {'entries':>7} {'matched':>7} {'cells':>6} notes"
+    print(header)
+    print("-" * len(header))
+    for name, r in reports.items():
+        if r.get("skipped"):
+            note = r.get("error") or f"corrections_dir={r.get('corrections_dir','')}"
+            print(f"{name:<24} {'-':>5} {'-':>7} {'-':>7} {'-':>6} skipped ({note})")
+            continue
+        print(f"{name:<24} "
+              f"{r.get('loaded_files',0):>5} "
+              f"{r.get('entries',0):>7} "
+              f"{r.get('matched',0):>7} "
+              f"{r.get('cells_changed',0):>6} "
+              f"applied={r.get('applied',0)}, fields={list(r.get('fields',{}).keys())}")
+    print()
+    print(f"# 合計: {total['sheets_processed']} シート処理 / skipped {total['sheets_skipped']}")
+    print(f"#        matched {total['matched']}, cells_changed {total['cells_changed']}")
+    if args.dry_run:
+        print("#        (dry-run: 保存は行っていません)")
+    return 0
+
+
 def _cmd_progress(args) -> int:
     """toc.yaml + state.yaml から進捗テーブルを表示。"""
     from .progress import load_toc, load_state, render_status_table, summary_counts
@@ -195,6 +243,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-highlight", action="store_true",
                     help="変更セルの薄黄ハイライトを無効化")
     sp.set_defaults(func=_cmd_xlsx_correct)
+
+    sp = sub.add_parser("xlsx-correct-book",
+                        help="sheets.yaml の設定で書籍 XLSX の全シートを一括校正")
+    sp.add_argument("config", help="sheets.yaml パス")
+    sp.add_argument("--out", default=None,
+                    help="出力先 XLSX (未指定なら sheets.yaml で指定の XLSX を上書き)")
+    sp.add_argument("--preview-dir", default=None,
+                    help="シート毎の比較 XLSX を出力するディレクトリ")
+    sp.add_argument("--dry-run", action="store_true", help="保存せず件数集計のみ")
+    sp.add_argument("--no-highlight", action="store_true",
+                    help="変更セルの薄黄ハイライトを無効化")
+    sp.set_defaults(func=_cmd_xlsx_correct_book)
 
     sp = sub.add_parser("progress", help="toc.yaml/state.yaml から進捗を表示")
     sp.add_argument("toc", help="toc.yaml のパス")

@@ -201,6 +201,34 @@ apply_to_xlsx("book.xlsx", "Sheet1", corrections,
 
 詳細は [`examples/xlsx_corrections_workflow.md`](examples/xlsx_corrections_workflow.md) を参照。
 
+### G. 書籍一括校正 (sheets.yaml + xlsx-correct-book)
+
+書籍 1 冊分の複数シートを宣言的に一括校正する。`sheets.yaml` に書籍構造を書くだけで、シート毎にキー構造が違っても 1 コマンドで処理できる。
+
+```yaml
+# _books/数秘術/引き寄せ数秘術の教科書_水谷奏音/sheets.yaml
+xlsx: ../引き寄せ数秘術の教科書_水谷奏音.xlsx
+corrections_dir: corrections
+
+sheets:
+  - name: Sheet1
+    key_cols: [LifePathNumber]
+    enabled: true
+  - name: 引き寄せコア
+    key_cols: [Type, Number]
+    enabled: true
+  - name: 相性表
+    enabled: false
+```
+
+```bash
+python -m ocr_toolkit.cli xlsx-correct-book sheets.yaml --dry-run
+python -m ocr_toolkit.cli xlsx-correct-book sheets.yaml --preview-dir previews/ --dry-run
+python -m ocr_toolkit.cli xlsx-correct-book sheets.yaml            # 本適用
+```
+
+校正辞書は `corrections/<sheet_name>/llm_corrections_*.py` の規約で配置。詳細は [`examples/xlsx_corrections_full_book.md`](examples/xlsx_corrections_full_book.md) 参照。
+
 ---
 
 ## ディレクトリ構成
@@ -216,7 +244,8 @@ ScanToXlsxStarter/
 ├── examples/
 │   ├── birthday_bible.md              # 366日分データ化の事例
 │   ├── llm_cleanup_workflow.md        # OCR後のLLM文脈校正ワークフロー (rows ベース)
-│   └── xlsx_corrections_workflow.md   # 完成 XLSX の後校正ワークフロー
+│   ├── xlsx_corrections_workflow.md   # 完成 XLSX の後校正ワークフロー (1 シート)
+│   └── xlsx_corrections_full_book.md  # 書籍単位の一括校正 (sheets.yaml)
 ├── ocr_toolkit/
 │   ├── __init__.py
 │   ├── cli.py                  # サブコマンドCLI
@@ -225,6 +254,7 @@ ScanToXlsxStarter/
 │   ├── fix_ocr.py              # 誤字辞書 + 正規表現ルール
 │   ├── corrections.py          # LLM校正辞書のロード・適用 (rows ベース)
 │   ├── xlsx_corrections.py     # 完成 XLSX シートの後校正 (openpyxl)
+│   ├── book_config.py          # sheets.yaml のロード (書籍一括校正)
 │   └── preview.py              # 比較XLSXジェネレータ (openpyxl)
 ├── LICENSE                     # MIT
 ├── README.md
