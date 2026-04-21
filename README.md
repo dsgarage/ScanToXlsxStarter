@@ -137,6 +137,35 @@ clean = fix_ocr(raw, extra_fixes={"半的感覚": "美的感覚"})
 Claude に自然言語で依頼できます:
 > *「このPDFを ScanToXlsxStarter でOCRして、XLSX化して」*
 
+### E. OCR 後の LLM 文脈校正パイプライン
+
+`fix_ocr()` の辞書置換で直らない **「文として成立しない」レベルの崩壊** は、Claude Opus の文脈推論で復元します。
+
+```python
+from ocr_toolkit import (
+    fix_ocr,            # 事前の文字列置換
+    load_merged,        # 校正辞書ファイルのマージロード
+    validate,           # 校正辞書の妥当性チェック
+    apply_corrections,  # 行データへの校正適用
+)
+from ocr_toolkit.preview import write_comparison  # 比較 XLSX 生成
+
+# 1) 校正辞書を統合
+merged = load_merged([
+    "llm_corrections_batch1.py",
+    "llm_corrections_batch2.py",
+])
+validate(merged, allowed_fields={"lead", "leadText"})
+
+# 2) 本番 DB / 出力先に適用 (DB 操作は呼び出し側 callback)
+apply_corrections(rows, merged, key_fn=lambda r: (r["month"], r["day"]))
+
+# 3) 比較 XLSX で目視レビュー
+write_comparison(output="preview.xlsx", rows=..., fields=("lead", "leadText"))
+```
+
+詳細な運用手順 (並列エージェント設定・タイムアウト回避・バッチサイズ) は [`examples/llm_cleanup_workflow.md`](examples/llm_cleanup_workflow.md) を参照。
+
 ---
 
 ## ディレクトリ構成
@@ -150,13 +179,16 @@ ScanToXlsxStarter/
 ├── configs/
 │   └── example.yaml            # config.yaml の雛形
 ├── examples/
-│   └── birthday_bible.md       # 366日分データ化の事例
+│   ├── birthday_bible.md       # 366日分データ化の事例
+│   └── llm_cleanup_workflow.md # OCR後のLLM文脈校正ワークフロー
 ├── ocr_toolkit/
 │   ├── __init__.py
 │   ├── cli.py                  # サブコマンドCLI
 │   ├── pdf_tools.py            # PDF→PNG, crop_regions
 │   ├── paddle_ocr.py           # 並列OCRランナー
-│   └── fix_ocr.py              # 誤字辞書 + 正規表現ルール
+│   ├── fix_ocr.py              # 誤字辞書 + 正規表現ルール
+│   ├── corrections.py          # LLM校正辞書のロード・適用
+│   └── preview.py              # 比較XLSXジェネレータ (openpyxl)
 ├── LICENSE                     # MIT
 ├── README.md
 ├── .gitignore
