@@ -172,6 +172,35 @@ write_comparison(output="preview.xlsx", rows=..., fields=("lead", "leadText"))
 
 詳細な運用手順 (suspicion 閾値・並列エージェント設定・タイムアウト回避) は [`examples/llm_cleanup_workflow.md`](examples/llm_cleanup_workflow.md) を参照。
 
+### F. 完成 XLSX の後校正 (xlsx_corrections)
+
+既に構造化済みの XLSX に対して、**シート単位で LLM 校正辞書を後から当てる** ユースケース。DB 投入前の XLSX レベル校正や、複数書籍の統一的な後校正基盤として利用します。
+
+```bash
+# ドライラン (件数と diff 統計を確認)
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --dry-run
+
+# 比較 XLSX プレビュー
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --preview preview.xlsx --dry-run
+
+# 本適用 (変更セルは薄黄でハイライト)
+python -m ocr_toolkit.cli xlsx-correct book.xlsx "Sheet1" corrections/ \
+  --key-cols Type,Number --out book.corrected.xlsx
+```
+
+```python
+from ocr_toolkit import load_merged
+from ocr_toolkit.xlsx_corrections import apply_to_xlsx, preview_xlsx_corrections
+
+corrections = load_merged(Path("corrections").glob("llm_corrections_*.py"))
+apply_to_xlsx("book.xlsx", "Sheet1", corrections,
+              key_fields=("Type", "Number"), out_path="book.corrected.xlsx")
+```
+
+詳細は [`examples/xlsx_corrections_workflow.md`](examples/xlsx_corrections_workflow.md) を参照。
+
 ---
 
 ## ディレクトリ構成
@@ -185,15 +214,17 @@ ScanToXlsxStarter/
 ├── configs/
 │   └── example.yaml            # config.yaml の雛形
 ├── examples/
-│   ├── birthday_bible.md       # 366日分データ化の事例
-│   └── llm_cleanup_workflow.md # OCR後のLLM文脈校正ワークフロー
+│   ├── birthday_bible.md              # 366日分データ化の事例
+│   ├── llm_cleanup_workflow.md        # OCR後のLLM文脈校正ワークフロー (rows ベース)
+│   └── xlsx_corrections_workflow.md   # 完成 XLSX の後校正ワークフロー
 ├── ocr_toolkit/
 │   ├── __init__.py
 │   ├── cli.py                  # サブコマンドCLI
 │   ├── pdf_tools.py            # PDF→PNG, crop_regions
 │   ├── paddle_ocr.py           # 並列OCRランナー
 │   ├── fix_ocr.py              # 誤字辞書 + 正規表現ルール
-│   ├── corrections.py          # LLM校正辞書のロード・適用
+│   ├── corrections.py          # LLM校正辞書のロード・適用 (rows ベース)
+│   ├── xlsx_corrections.py     # 完成 XLSX シートの後校正 (openpyxl)
 │   └── preview.py              # 比較XLSXジェネレータ (openpyxl)
 ├── LICENSE                     # MIT
 ├── README.md
