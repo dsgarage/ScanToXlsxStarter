@@ -4,6 +4,8 @@ Usage:
     python -m ocr_toolkit.cli pdf2png input.pdf out/images/
     python -m ocr_toolkit.cli ocr out/images/ out/ocr/
     python -m ocr_toolkit.cli run config.yaml
+    python -m ocr_toolkit.cli book2md <PDF またはフォルダ>...
+    python -m ocr_toolkit.cli book2md-remote <PDF またはフォルダ>
 """
 from __future__ import annotations
 import argparse
@@ -166,6 +168,37 @@ def _cmd_progress(args) -> int:
     return 0
 
 
+def _cmd_book2md(args) -> int:
+    """書籍スキャン PDF のページ欠け検査 → OCR → Markdown(本体。Windows などで実行)。"""
+    from .book2md.runner import Options, run
+
+    first = Path(args.inputs[0])
+    work = Path(args.work) if args.work else (
+        (first if first.is_dir() else first.parent) / "_book2md_work"
+    )
+    opts = Options(
+        work=work,
+        out=Path(args.out) if args.out else None,
+        rename_missing=args.rename_missing,
+        device=args.device,
+        model=args.model,
+        on_uncertain=args.on_uncertain,
+        strict=args.strict,
+        apply_fix=args.apply_fix,
+        keep_lines=args.keep_lines,
+        include_pgx=args.include_pgx,
+        report=Path(args.report) if args.report else None,
+    )
+    report = run(args.inputs, opts)
+    return 1 if report["counts"].get("failed") else 0
+
+
+def _cmd_book2md_remote(args) -> int:
+    """Air から遠隔(winpc)で book2md を実行する入口。"""
+    from .book2md.remote import cmd_book2md_remote
+    return cmd_book2md_remote(args)
+
+
 def _cmd_run(args) -> int:
     """config.yaml の手順に従って PDF→PNG→OCR を実行(簡易版)"""
     import yaml
@@ -260,6 +293,47 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("toc", help="toc.yaml のパス")
     sp.add_argument("--state", help="state.yaml パス (デフォルト: toc.yaml と同じディレクトリ)")
     sp.set_defaults(func=_cmd_progress)
+
+    sp = sub.add_parser("book2md",
+                        help="書籍スキャン PDF のページ欠け検査 → OCR → Markdown")
+    sp.add_argument("inputs", nargs="+", help="PDF またはフォルダ(直下の *.pdf)")
+    sp.add_argument("--work", default=None,
+                    help="作業フォルダ(既定: 入力のフォルダ/_book2md_work)")
+    sp.add_argument("--out", default=None, help="MD の出力先(既定: PDF と同じフォルダ)")
+    sp.add_argument("--report", default=None, help="結果 JSON のパス")
+    sp.add_argument("--no-rename-missing", dest="rename_missing", action="store_false",
+                    help="欠けのある PDF を PGX_ にリネームしない")
+    sp.add_argument("--device", choices=["auto", "gpu", "cpu"], default="auto")
+    sp.add_argument("--model", choices=["auto", "mobile", "server"], default="auto")
+    sp.add_argument("--on-uncertain", dest="on_uncertain", choices=["ocr", "skip"],
+                    default="ocr", help="ノンブルが読めず判定不能のときの扱い")
+    sp.add_argument("--strict", action="store_true",
+                    help="白紙削除の疑いも欠け扱いにする")
+    sp.add_argument("--fix", dest="apply_fix", action="store_true",
+                    help="誤字辞書 fix_ocr を適用する(既定は適用しない)")
+    sp.add_argument("--keep-lines", dest="keep_lines", action="store_true",
+                    help="行を段落にまとめず 1 行 1 段落で出す")
+    sp.add_argument("--include-pgx", dest="include_pgx", action="store_true",
+                    help="PGX_ 始まりの PDF も処理する")
+    sp.set_defaults(func=_cmd_book2md)
+
+    sp = sub.add_parser("book2md-remote",
+                        help="Air から winpc で book2md を実行(コード同期・転送・取得)")
+    sp.add_argument("input", help="PDF またはフォルダ")
+    sp.add_argument("--host", default="winpc")
+    sp.add_argument("--setup", action="store_true", help="遠隔の venv と PaddleOCR を導入する")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="処理する/飛ばす一覧だけ出す(通信しない)")
+    sp.add_argument("--device", choices=["auto", "gpu", "cpu"], default="auto")
+    sp.add_argument("--model", choices=["auto", "mobile", "server"], default="auto")
+    sp.add_argument("--on-uncertain", dest="on_uncertain", choices=["ocr", "skip"],
+                    default="ocr")
+    sp.add_argument("--strict", action="store_true")
+    sp.add_argument("--fix", dest="apply_fix", action="store_true",
+                    help="誤字辞書 fix_ocr を適用する(既定は適用しない)")
+    sp.add_argument("--keep-lines", dest="keep_lines", action="store_true")
+    sp.add_argument("--include-pgx", dest="include_pgx", action="store_true")
+    sp.set_defaults(func=_cmd_book2md_remote)
 
     return p
 
