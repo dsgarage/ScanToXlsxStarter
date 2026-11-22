@@ -44,3 +44,7 @@ secrets/
 
 # Apple Silicon PaddleOCR venv (setup.sh で再生成可能)
 .venv_paddleocr
+
+# book2md の出力・作業フォルダ
+_book2md/
+_book2md_work/

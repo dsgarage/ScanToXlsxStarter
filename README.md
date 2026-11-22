@@ -309,3 +309,147 @@ ScanToXlsxStarter/
 
 - [PaddlePaddle/PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) — コアOCRエンジン
 - [poppler](https://poppler.freedesktop.org/) — PDF→PNG変換
+
+---
+
+## book2md(ページ欠け検査 → OCR → Markdown)
+
+スキャンした書籍の PDF について、**ページの欠けを先に検査し、欠けが無ければ OCR して、1 冊につき 1 つの Markdown** を作るツールです。Markdown は後で LLM に校正させる前提で、元の PDF のページ番号と印字ページ番号の目印を入れています。
+
+- 本体は `book2md`(Windows などの GPU マシン向け。CPU でも動きます)
+- MacBook などから遠隔の Windows を動かす入口が `book2md-remote`(コードの同期・PDF の転送・結果の取得を行います)
+
+### 遠隔の Windows で動かす(MacBook などから)
+
+```bash
+# 初回だけ: 遠隔の Windows に実行環境(venv と PaddleOCR)を作る
+python3 -m ocr_toolkit.cli book2md-remote "<フォルダ>" --setup
+
+# 以降: フォルダ内の PDF を処理する
+python3 -m ocr_toolkit.cli book2md-remote "<フォルダ>"
+```
+
+前提は次のとおりです。
+
+- ssh でパスワードなしに入れること。ホスト名の既定は `winpc` で、`--host` で変えられます
+- Windows 側に `uv` と Python 3.11 が入っていること(`--setup` が `uv venv --python 3.11` で環境を作ります)
+- 導入先は Windows のホーム直下の `$HOME\book2md`(`venv`・`app`・`inbox`・`work`・`out`)と、モデルのキャッシュ `~\.paddlex` だけです
+- `--setup` は `--device {auto,gpu,cpu}` に従って GPU 版または CPU 版の PaddlePaddle を入れます
+
+`--dry-run` を付けると、通信せずに「処理する PDF」「飛ばす PDF」の一覧だけを表示します。
+
+### Windows などで単体で動かす
+
+```bash
+python -m ocr_toolkit.cli book2md <PDF またはフォルダ>
+```
+
+フォルダを渡したときは、直下の `*.pdf` が対象です。
+
+### 出力物
+
+| ファイル | 内容 |
+|---|---|
+| `<元の名前>.md` | 1 冊分の Markdown(欠けが無かった本だけ) |
+| `<元の名前>.check.json` | ページ欠け検査の詳細(`book2md` は PDF と同じ場所、`book2md-remote` は `_book2md/`) |
+| `_book2md/report.txt` / `report.json` / `state.json` | 遠隔の入口が PDF のフォルダに残す、結果一覧と状態(`remote_report.json` は取得した遠隔のレポート) |
+| `book2md_report.json` | 単体の `book2md` が残す結果一覧(`--report` で場所を変えられます) |
+| `PGX_<元の名前>.pdf` | 欠けのあった PDF のリネーム先。OCR はしません |
+
+Markdown は先頭に YAML のヘッダがあり、本文にはページごとの目印が入ります。ページの目印は `<!-- page: <PDF のページ番号> printed: <印字ページ番号> -->` で、読み取れなかったときの印字番号は `-`、白紙ページには末尾に `blank` が付きます。
+
+```markdown
+---
+title: "サンプル"
+source: "サンプル.pdf"
+pdf_pages: 3
+page_check: ok
+ocr_model: <モデル名>
+ocr_device: <デバイス>
+generated: <日時>
+tool: ocr_toolkit book2md
+---
+
+<!-- page: 1 printed: - -->
+
+ダミーの前書きです。
+
+<!-- page: 2 printed: 1 -->
+
+ダミーの本文その 1 です。
+
+<!-- page: 3 printed: 2 -->
+
+ダミーの本文その 2 です。
+```
+
+### 結果の状態
+
+| 表示 | 意味 |
+|---|---|
+| OK | 欠けは見つからず、OCR して Markdown を作った |
+| OK(未検査) | ノンブルが読めず判定できなかったが、OCR して Markdown を作った |
+| 欠けあり | 欠けが見つかった。PDF を `PGX_` 始まりにリネームし、OCR はしていない |
+| 判定不能 | ノンブルが読めず、`--on-uncertain skip` のため OCR を飛ばした |
+| 失敗 | 処理中にエラーが出た(理由は結果一覧に出ます) |
+| 済み | (遠隔の入口)Markdown が既にあり、今回は何もしなかった |
+| PGX済 | 入力が `PGX_` 始まりなので飛ばした(`--include-pgx` で処理します) |
+
+### 判定の規則と限界
+
+各ページの上下の余白からノンブル(印字ページ番号)を読み取り、PDF のページ番号との差が途中で減ったときに「欠けあり」とします。次の限界があります。
+
+- 最初のノンブルより前(前付け)と、最後のノンブルより後(奥付など)の欠けは検出できません
+- ノンブルが漢数字・ローマ数字だけの本は、読み取れず「未検査」になります
+- 小口(横の余白)に印字されたノンブルは読みません
+- スキャナの白紙ページ自動削除が ON だと、本の白紙ページが消えて落丁と区別できません。ノンブルの並びが「章扉の直前の 1 ページ欠け」と同じになるため、この形は既定では**白紙削除の疑い**として結果一覧に報告するだけで、OCR は続けます。`--strict` を付けると欠け扱い(`PGX_`)になります
+- 欠けの隣のページのノンブルが読めない場合も、同じ理由で白紙削除の疑いになります
+
+書籍のスキャンでは、白紙ページの自動削除を OFF にすることをおすすめします。
+
+### 再開と既存の Markdown の退避
+
+- OCR の結果はページ単位でキャッシュされます。途中で止まっても、同じコマンドをもう一度実行すると続きから再開します(単体の `book2md` は入力のフォルダの `_book2md_work/<job_id>/`、遠隔の入口は Windows 側の `book2md\work` に置きます)
+- 同じ名前の Markdown が既にあり、中身が今回の結果と違うときは、上書きする前に退避します。校正済みの Markdown を失わないためです。退避先は、単体の `book2md` では `_book2md_work/<job_id>/backup/`、`book2md-remote` では PDF のフォルダの `_book2md/backup/` で、名前は `<元の名前>.<日時>.md` です。中身が同じなら退避しません
+- `book2md-remote` を Ctrl-C で止めると、終了コード 130 で終わります
+
+### オプション
+
+`book2md`(`inputs` は PDF またはフォルダで、複数指定できます)
+
+| オプション | 内容 |
+|---|---|
+| `--work WORK` | 作業フォルダ(既定: 入力のフォルダ/`_book2md_work`) |
+| `--out OUT` | Markdown の出力先(既定: PDF と同じフォルダ) |
+| `--report REPORT` | 結果 JSON のパス |
+| `--no-rename-missing` | 欠けのある PDF を `PGX_` にリネームしない |
+| `--device {auto,gpu,cpu}` | 使うデバイス |
+| `--model {auto,mobile,server}` | OCR モデル |
+| `--on-uncertain {ocr,skip}` | ノンブルが読めず判定不能のときの扱い |
+| `--strict` | 白紙削除の疑いも欠け扱いにする |
+| `--fix` | 誤字辞書 `fix_ocr` を適用する(既定は適用しない) |
+| `--keep-lines` | 行を段落にまとめず 1 行 1 段落で出す |
+| `--include-pgx` | `PGX_` 始まりの PDF も処理する |
+
+`book2md-remote`(`input` は PDF またはフォルダ)
+
+| オプション | 内容 |
+|---|---|
+| `--host HOST` | ssh のホスト名(既定: `winpc`) |
+| `--setup` | 遠隔の venv と PaddleOCR を導入する |
+| `--dry-run` | 処理する/飛ばす一覧だけ出す(通信しない) |
+| `--device {auto,gpu,cpu}` | 使うデバイス |
+| `--model {auto,mobile,server}` | OCR モデル |
+| `--on-uncertain {ocr,skip}` | ノンブルが読めず判定不能のときの扱い |
+| `--strict` | 白紙削除の疑いも欠け扱いにする |
+| `--fix` | 誤字辞書 `fix_ocr` を適用する(既定は適用しない) |
+| `--keep-lines` | 行を段落にまとめず 1 行 1 段落で出す |
+| `--include-pgx` | `PGX_` 始まりの PDF も処理する |
+
+### 検証用: ページを抜いた PDF を作る
+
+```bash
+python scripts/drop_pages.py <in.pdf> <out.pdf> --drop 150,201,202
+```
+
+`--drop` は PDF のページ番号(1 始まり)です。欠けの検出を試すときに使います。
