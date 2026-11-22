@@ -32,7 +32,7 @@ from .common import (
 )
 from .report import build_report, render_text
 
-REMOTE_BASE = "book2md"  # winpc のホーム(C:\Users\dsgar)からの相対
+REMOTE_BASE = "book2md"  # 遠隔(Windows)のホームからの相対
 SSH_OPTS = [
     "-o", "BatchMode=yes",
     "-o", "ConnectTimeout=15",
