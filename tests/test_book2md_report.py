@@ -94,6 +94,21 @@ class ReportTest(unittest.TestCase):
         text = render_text(build_report([b], started="s", finished="f"))
         self.assertIn("白紙 2 / ノンブル確認 8/30p", text)
 
+    def test_unread_lines_shown_first(self):
+        check = {"anchored": 8, "total_pages": 30}
+        b = _book("a.pdf", "ok", check=check, unread_lines=7, unread_pages=[3, 5])
+        text = render_text(build_report([b], started="s", finished="f"))
+        self.assertIn("読めなかった行 7(2 ページ) / ノンブル確認 8/30p", text)
+        self.assertLess(text.index("読めなかった行"), text.index("ノンブル確認"))
+
+    def test_unread_lines_zero_or_missing_not_shown(self):
+        books = [
+            _book("a.pdf", "ok", unread_lines=0, unread_pages=[]),
+            _book("b.pdf", "ok"),
+        ]
+        text = render_text(build_report(books, started="s", finished="f"))
+        self.assertNotIn("読めなかった行", text)
+
     def test_failed_error_truncated(self):
         text = render_text(build_report([_book("a.pdf", "failed", error="E" * 300)], started="s", finished="f"))
         self.assertIn("E" * 120, text)

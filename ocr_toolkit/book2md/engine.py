@@ -37,7 +37,11 @@ class OcrEngine:
     def __init__(self, *, model: str, device: str | None, textline_orientation: bool):
         from paddleocr import PaddleOCR
 
-        self.info = {"model": f"PP-OCRv5_{model}", "device": device or "auto"}
+        self.info = {
+            "model": f"PP-OCRv5_{model}",
+            "device": device or "auto",
+            "textline_orientation": bool(textline_orientation),
+        }
         kwargs = dict(
             lang="japan",
             text_detection_model_name=f"PP-OCRv5_{model}_det",

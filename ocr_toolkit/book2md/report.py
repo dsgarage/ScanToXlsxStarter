@@ -57,6 +57,9 @@ def _memo(book: dict) -> str:
         return memo
     if status in ("ok", "ok_unchecked", "uncertain_skipped", "checked_ok", "checked_uncertain"):
         parts: list[str] = []
+        unread = book.get("unread_lines") or 0
+        if unread > 0:
+            parts.append(f"読めなかった行 {unread}({len(book.get('unread_pages') or [])} ページ)")
         sus = check.get("suspect_blank_removed") or []
         if sus:
             parts.append("白紙削除疑い: " + " / ".join(_gap_text(g) for g in sus))

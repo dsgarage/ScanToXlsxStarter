@@ -5,6 +5,7 @@ from ocr_toolkit.book2md.layout import (
     band_of,
     build_paragraphs,
     collect_running_heads,
+    count_unread,
     filter_ruby,
     header_key,
     order_lines,
@@ -220,6 +221,85 @@ class HorizontalTest(unittest.TestCase):
 
     def test_build_paragraphs_empty(self):
         self.assertEqual(build_paragraphs([], "horizontal"), [])
+
+
+class RunSplitTest(unittest.TestCase):
+    """見出しや別の位置のまとまりがあっても、本文の段落判定がずれないこと。"""
+
+    def test_horizontal_heading_and_body(self):
+        items = [
+            ("見出しの一行目です", (300, 600, 700, 640)),
+            ("見出しの二行目です", (300, 660, 700, 700)),
+        ]
+        for k in range(5):
+            x1 = 500 if k == 4 else 900
+            items.append((f"本文の{k}行目", (100, 1000 + k * 28, x1, 1018 + k * 28)))
+        r = page_to_text(ocr_page(items), set())
+        self.assertEqual(r.orientation, "horizontal")
+        self.assertEqual(len(r.paragraphs), 2)
+        self.assertEqual(r.paragraphs[0], "見出しの一行目です見出しの二行目です")
+        self.assertEqual(r.paragraphs[1], "本文の0行目本文の1行目本文の2行目本文の3行目本文の4行目")
+
+    def test_horizontal_two_paragraphs(self):
+        items = [
+            ("最初の行です", (100, 1000, 900, 1018)),
+            ("次の行です", (100, 1028, 900, 1046)),
+            ("字下げの行です", (118, 1056, 900, 1074)),
+            ("続きの行です", (100, 1084, 900, 1102)),
+        ]
+        r = page_to_text(ocr_page(items), set())
+        self.assertEqual(r.paragraphs, ["最初の行です次の行です", "字下げの行です続きの行です"])
+
+    def test_vertical_short_then_indent(self):
+        items = []
+        for k in range(6):
+            y0, y1 = 300, 800
+            if k == 2:
+                y1 = 500
+            if k == 3:
+                y0 = 360
+            items.append(col(800 - k * 60, y0, y1, f"本文{k}行目です"))
+        r = page_to_text(ocr_page(items), set())
+        self.assertEqual(r.orientation, "vertical")
+        self.assertEqual(
+            r.paragraphs,
+            ["本文0行目です本文1行目です本文2行目です", "本文3行目です本文4行目です本文5行目です"],
+        )
+
+    def test_vertical_heading_and_body(self):
+        items = [
+            col(800, 300, 700, "見出しの題", width=80),
+            col(600, 300, 800, "本文一行目です"),
+            col(540, 300, 800, "本文二行目です"),
+            col(480, 300, 800, "本文三行目です"),
+        ]
+        r = page_to_text(ocr_page(items), set())
+        self.assertEqual(r.paragraphs, ["見出しの題", "本文一行目です本文二行目です本文三行目です"])
+
+    def test_vertical_two_separated_runs(self):
+        items = [
+            col(800, 300, 800, "右の一行目です"),
+            col(740, 300, 800, "右の二行目です"),
+            col(400, 300, 800, "左の一行目です"),
+            col(340, 300, 800, "左の二行目です"),
+        ]
+        r = page_to_text(ocr_page(items), set())
+        self.assertEqual(r.paragraphs, ["右の一行目です右の二行目です", "左の一行目です左の二行目です"])
+
+
+class CountUnreadTest(unittest.TestCase):
+    def test_counts_only_long_empty_boxes(self):
+        o = ocr_page([
+            ("", (100, 100, 140, 1100)),  # 長い空の箱 → 数える
+            ("  ", (200, 100, 240, 1100)),  # 空白だけも空扱い
+            ("", (300, 100, 340, 200)),  # 短い空の箱
+            ("", (400, 100, 800, 300)),  # 長辺が短辺の 3 倍未満
+            ("あいうえお", (500, 100, 540, 1100)),  # 文字のある箱
+        ])
+        self.assertEqual(count_unread(o), 2)
+
+    def test_empty_page(self):
+        self.assertEqual(count_unread(ocr_page([])), 0)
 
 
 if __name__ == "__main__":

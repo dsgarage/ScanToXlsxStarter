@@ -263,6 +263,62 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("ダミー本文7", md)
         self.assertIn("ダミー本文12", md)
 
+    def test_full_engine_disables_textline_orientation(self):
+        from unittest import mock
+
+        from ocr_toolkit.book2md.runner import Engines
+
+        with mock.patch("ocr_toolkit.book2md.engine.OcrEngine") as oe, mock.patch(
+            "ocr_toolkit.book2md.engine.detect_device", return_value="cpu"
+        ):
+            Engines("cpu", "mobile").full
+        self.assertEqual(oe.call_count, 1)
+        self.assertIs(oe.call_args.kwargs["textline_orientation"], False)
+
+    def test_old_cache_version_is_renamed_and_redone(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 g.pdf"
+        make_pdf(pdf, 30)
+        rep = run([str(pdf)], self.opts(), FakeEngines(OK_PRINTED))
+        wd = self.dir / "work" / rep["books"][0]["job_id"]
+        self.assertTrue((wd / "ocr" / "_cache.json").exists())
+        self.assertEqual(list(wd.glob("ocr.old-*")), [])
+
+        (wd / "ocr" / "_cache.json").unlink()
+        eng2 = FakeEngines(OK_PRINTED)
+        run([str(pdf)], self.opts(), eng2)
+        self.assertEqual(len(list(wd.glob("ocr.old-*"))), 1)
+        self.assertEqual(len(list(wd.glob("ocr_info.old-*.json"))), 1)
+        self.assertEqual(eng2.full.calls, 30)
+        self.assertTrue((wd / "ocr" / "_cache.json").exists())
+
+        eng3 = FakeEngines(OK_PRINTED)
+        run([str(pdf)], self.opts(), eng3)
+        self.assertEqual(eng3.full.calls, 0)
+        self.assertEqual(len(list(wd.glob("ocr.old-*"))), 1)
+
+    def test_unread_lines_are_counted(self):
+        from ocr_toolkit.book2md.runner import run
+
+        class UnreadFull(FakeFull):
+            def run(self, image_path):
+                res = super().run(image_path)
+                if _page_no(image_path) == 5:
+                    res["texts"] += ["", ""]
+                    res["scores"] += [0.0, 0.0]
+                    res["boxes"] += [[100, 100, 140, 500], [300, 100, 340, 500]]
+                return res
+
+        pdf = self.dir / "本 h.pdf"
+        make_pdf(pdf, 30)
+        eng = FakeEngines(OK_PRINTED)
+        eng.full = UnreadFull()
+        rep = run([str(pdf)], self.opts(), eng)
+        book = rep["books"][0]
+        self.assertEqual(book["unread_lines"], 2)
+        self.assertEqual(book["unread_pages"], [5])
+
     def test_pgx_input_is_skipped(self):
         from ocr_toolkit.book2md.runner import list_inputs
 

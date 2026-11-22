@@ -24,11 +24,21 @@ from .common import (
     pgx_name,
     read_json,
 )
-from .layout import collect_running_heads, page_orientation, page_to_text, to_boxes
+from .layout import (
+    collect_running_heads,
+    count_unread,
+    page_orientation,
+    page_to_text,
+    to_boxes,
+)
 from .markdown import PageEntry, build_markdown
 from .nombre import PageObs, analyze, extract_numbers
 from .pages import extract_pages, make_margin_composite, page_stats
 from .report import build_report, render_text
+
+
+# 本文 OCR の結果の形や設定を変えたら上げる。1 = 行の向き判定あり(長い行が抜ける)
+OCR_CACHE_VERSION = 2
 
 
 @dataclass
@@ -81,7 +91,9 @@ class Engines:
             self._full = OcrEngine(
                 model=resolve_model(self.model_opt, dev),
                 device=dev,
-                textline_orientation=True,
+                # 行の向き判定を有効にすると、縦に長い行(高さが幅の 20 倍以上)が空で返る。
+                # 実機で確認(Issue #14)
+                textline_orientation=False,
             )
         return self._full
 
@@ -152,6 +164,35 @@ def _display_name(pdf: Path) -> str:
     if isinstance(side, dict) and side.get("name"):
         return str(side["name"])
     return pdf.name
+
+
+def _unique_dest(base: Path) -> Path:
+    dest = base
+    k = 2
+    while dest.exists():
+        dest = base.with_name(f"{base.name}_{k}")
+        k += 1
+    return dest
+
+
+def _ensure_ocr_cache_version(wd: Path, job_id: str) -> None:
+    """本文 OCR のキャッシュの版を確かめ、古ければ ocr/ を日時付きに改名して作り直す(消さない)。"""
+    ocr_dir = wd / "ocr"
+    meta = ocr_dir / "_cache.json"
+    if ocr_dir.is_dir():
+        cur = read_json(meta, None)
+        ver = cur.get("version") if isinstance(cur, dict) else None
+        if ver != OCR_CACHE_VERSION:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest = _unique_dest(wd / f"ocr.old-{stamp}")
+            ocr_dir.rename(dest)
+            info = wd / "ocr_info.json"
+            if info.exists():
+                suffix = dest.name[len("ocr.old-"):]
+                info.rename(wd / f"ocr_info.old-{suffix}.json")
+            _log(f"{job_id} 本文 OCR のキャッシュが古い版なので作り直します(旧: {dest.name})")
+    if not meta.exists():
+        atomic_write_json(meta, {"version": OCR_CACHE_VERSION})
 
 
 def _now() -> str:
@@ -280,6 +321,7 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     # 6. 本文 OCR
     t0 = time.time()
     ocr_dir = wd / "ocr"
+    _ensure_ocr_cache_version(wd, job_id)
     todo = [e for e in index if read_json(ocr_dir / f"p{e['index']:04d}.json", None) is None]
     _log(f"{job_id} ocr new={len(todo)} cached={n - len(todo)}")
     for k, e in enumerate(todo, start=1):
@@ -307,9 +349,15 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     dup_of = {d["pdf_pages"][0]: d["pdf_pages"][1] for d in check.duplicates}
     entries = []
     blank_pages: list[int] = []
+    unread_lines = 0
+    unread_pages: list[int] = []
     for e, res, pb in zip(index, ocrs, per_page):
         pt = page_to_text(res, heads, keep_lines=opts.keep_lines)
         is_blank = len(pb[0]) == 0
+        u = count_unread(res)
+        if u:
+            unread_lines += u
+            unread_pages.append(e["index"])
         if is_blank:
             blank_pages.append(e["index"])
         entries.append(
@@ -343,6 +391,8 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
 
     book["md"] = str(md_path)
     book["blank_pages"] = blank_pages
+    book["unread_lines"] = unread_lines
+    book["unread_pages"] = unread_pages
     book["ocr"] = full_info or None
     book["status"] = STATUS_OK_UNCHECKED if unchecked else STATUS_OK
     atomic_write_json(wd / "state.json", book)

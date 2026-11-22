@@ -232,42 +232,79 @@ def order_lines(boxes: list[Box], orientation: str) -> list[Line]:
     return lines
 
 
-def _percentile(vals: list[float], p: float) -> float:
-    s = sorted(vals)
-    return s[int(p * (len(s) - 1))]
+def count_unread(ocr: dict, min_len_ratio: float = 0.15) -> int:
+    """文字の領域として検出されたのに、認識結果が空だった長い箱の数。
+    長い = 長辺がページの長辺の min_len_ratio 以上、かつ長辺が短辺の 3 倍以上。"""
+    page_long = max(float(ocr.get("w", 0)), float(ocr.get("h", 0)))
+    n = 0
+    for text, b in zip(ocr.get("texts", []), ocr.get("boxes", [])):
+        if text.strip():
+            continue
+        bw, bh = abs(float(b[2]) - float(b[0])), abs(float(b[3]) - float(b[1]))
+        long_side, short_side = max(bw, bh), min(bw, bh)
+        if long_side >= min_len_ratio * page_long and long_side >= 3 * short_side:
+            n += 1
+    return n
+
+
+def _split_runs(lines: list[Line], vertical: bool) -> list[list[Line]]:
+    """太さが近く、行間が詰まっている行を、ひとまとまり(run)にまとめる。"""
+    runs: list[list[Line]] = []
+    for ln in lines:
+        if runs:
+            prev = runs[-1][-1]
+            if vertical:
+                tp, tc = prev.x1 - prev.x0, ln.x1 - ln.x0
+                dist = abs((prev.x0 + prev.x1) / 2 - (ln.x0 + ln.x1) / 2)
+            else:
+                tp, tc = prev.y1 - prev.y0, ln.y1 - ln.y0
+                dist = abs((prev.y0 + prev.y1) / 2 - (ln.y0 + ln.y1) / 2)
+            hi = max(tp, tc)
+            if hi > 0 and min(tp, tc) / hi >= 0.75 and dist <= 2.5 * hi:
+                runs[-1].append(ln)
+                continue
+        runs.append([ln])
+    return runs
 
 
 def build_paragraphs(lines: list[Line], orientation: str) -> list[str]:
+    """行(読み順)を段落にまとめる。
+
+    見出しや吹き出しなど別の版面の行が同じページにあっても本文の基準がずれないよう、
+    太さが近く行間の詰まった行のまとまりごとに字下げ(T)と行末(B)の基準を取る。
+    まとまりの中は同じ版面の行だけなので、T は最小値、B は最大値でよい
+    (パーセンタイルは行数の少ないまとまりで不安定になる)。
+    """
     if not lines:
         return []
     vertical = orientation == "vertical"
-    if vertical:
-        c = statistics.median([ln.x1 - ln.x0 for ln in lines])
-        start = _percentile([ln.y0 for ln in lines], 0.10)
-        end = _percentile([ln.y1 for ln in lines], 0.90)
-    else:
-        c = statistics.median([ln.y1 - ln.y0 for ln in lines])
-        start = _percentile([ln.x0 for ln in lines], 0.10)
-        end = _percentile([ln.x1 for ln in lines], 0.90)
-
     paras: list[list[str]] = []
-    prev: Line | None = None
-    for ln in lines:
-        ln_start = ln.y0 if vertical else ln.x0
-        new = prev is None
-        if not new:
-            prev_end = prev.y1 if vertical else prev.x1
-            if ln_start - start > 0.5 * c:
-                new = True
-            elif prev_end < end - 1.0 * c:
-                new = True
-            elif ln.text[0] in "「『（(" and prev.text[-1] in "」』）)。":
-                new = True
-        if new:
-            paras.append([ln.text])
+    for run in _split_runs(lines, vertical):
+        if vertical:
+            c = statistics.median([ln.x1 - ln.x0 for ln in run])
+            top = min(ln.y0 for ln in run)
+            bottom = max(ln.y1 for ln in run)
         else:
-            paras[-1].append(ln.text)
-        prev = ln
+            c = statistics.median([ln.y1 - ln.y0 for ln in run])
+            top = min(ln.x0 for ln in run)
+            bottom = max(ln.x1 for ln in run)
+        prev: Line | None = None
+        for ln in run:
+            ln_start = ln.y0 if vertical else ln.x0
+            new = prev is None
+            if not new:
+                prev_end = prev.y1 if vertical else prev.x1
+                if ln_start - top > 0.5 * c:
+                    new = True
+                elif prev_end < bottom - 1.0 * c:
+                    new = True
+                elif ln.text[0] in "「『（(" and prev.text[-1] in "」』）)。":
+                    new = True
+            if new:
+                paras.append([ln.text])
+            else:
+                paras[-1].append(ln.text)
+            prev = ln
     return [_join(p, True) for p in paras]
 
 
