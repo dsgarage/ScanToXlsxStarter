@@ -46,13 +46,24 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual(r.gating, [])
         self.assertEqual(r.printed_by_pdf[5], 1)
 
-    def test_one_missing(self):
+    def test_one_missing_is_suspect_blank_removed(self):
+        # 前後とも番号が読めている 1 ページ欠けは、白紙削除の疑い(既定は ok)
         r = analyze(make(299, book(total=299, skip={120})))
-        self.assertEqual(r.status, "missing")
-        self.assertEqual(r.gating, ["missing"])
-        self.assertEqual(len(r.missing), 1)
-        self.assertEqual(r.missing[0]["exact"], [120])
-        self.assertEqual(r.missing[0]["count"], 1)
+        self.assertEqual(r.status, "ok")
+        self.assertEqual(r.gating, [])
+        self.assertEqual(r.missing, [])
+        self.assertEqual(len(r.suspect_blank_removed), 1)
+        self.assertEqual(r.suspect_blank_removed[0]["count"], 1)
+        self.assertEqual(r.suspect_blank_removed[0]["exact"], [120])
+        r2 = analyze(make(299, book(total=299, skip={120})), strict=True)
+        self.assertEqual(r2.status, "missing")
+        self.assertEqual(r2.gating, ["suspect_blank_removed"])
+
+    def test_two_separate_one_page_gaps(self):
+        r = analyze(make(298, book(total=298, skip={100, 200})))
+        self.assertEqual(r.status, "ok")
+        self.assertEqual(r.missing, [])
+        self.assertEqual(len(r.suspect_blank_removed), 2)
 
     def test_two_missing(self):
         r = analyze(make(298, book(total=298, skip={120, 121})))

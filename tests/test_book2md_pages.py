@@ -48,14 +48,15 @@ class PagesTest(unittest.TestCase):
         for e in info:
             self.assertGreater((self.dir / "pages" / e["file"]).stat().st_size, 0)
 
-    def test_blank_detection(self):
+    def test_page_stats_returns_ink_only(self):
         from ocr_toolkit.book2md.pages import extract_pages, page_stats
 
         pdf = self.dir / "b.pdf"
         make_pdf(pdf, 3, blank_pages=(2,))
         info = extract_pages(pdf, self.dir / "pages")
-        flags = [page_stats(self.dir / "pages" / e["file"])["blank"] for e in info]
-        self.assertEqual(flags, [False, True, False])
+        stats = [page_stats(self.dir / "pages" / e["file"]) for e in info]
+        self.assertTrue(all(set(s) == {"ink"} for s in stats))
+        self.assertGreater(stats[0]["ink"], stats[1]["ink"])
 
     def test_rerun_does_not_rebuild(self):
         from ocr_toolkit.book2md.pages import extract_pages

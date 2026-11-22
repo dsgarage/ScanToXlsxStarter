@@ -102,11 +102,12 @@ def ink_ratio(gray) -> float:
 
 
 def page_stats(img_path) -> dict:
+    """ink は参考値。細い文字は縮小で消えるので、白紙の判定には使わない。"""
     from PIL import Image
 
     with Image.open(img_path) as im:
         ink = ink_ratio(im)
-    return {"blank": ink < 0.002, "ink": round(ink, 5)}
+    return {"ink": round(ink, 5)}
 
 
 def make_margin_composite(img_path, out_path, ratio: float = MARGIN_RATIO, gap: int = 20) -> dict:

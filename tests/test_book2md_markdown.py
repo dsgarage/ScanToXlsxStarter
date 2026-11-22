@@ -61,6 +61,29 @@ class MarkdownTest(unittest.TestCase):
         line = [x for x in md.split("\n") if x.startswith("suspect_blank_removed:")][0]
         self.assertEqual(json.loads(line.split(": ", 1)[1]), [{"printed_from": 22, "printed_to": 22}])
 
+    def test_duplicate_marker_and_front_matter(self):
+        pages = [
+            PageEntry(1, 1, False, ["本文"], duplicate_of=3),
+            PageEntry(2, 2, True, [], duplicate_of=4),
+            PageEntry(3, 1, False, ["本文"]),
+        ]
+        md = build(pages)
+        self.assertIn("<!-- page: 1 printed: 1 dup-of: 3 -->", md)
+        self.assertIn("<!-- page: 2 printed: 2 dup-of: 4 blank -->", md)
+        self.assertIn("<!-- page: 3 printed: 1 -->", md)
+        lines = md.split("\n")
+        self.assertEqual(lines[5], "duplicate_pages: 2")
+        self.assertEqual(lines[6], "ocr_model: PP-OCRv5_server")
+        # 疑いの行がある場合はその後
+        md2 = build(pages, missing_suspects=[{"printed_from": 5, "printed_to": 5}])
+        l2 = md2.split("\n")
+        self.assertTrue(l2[5].startswith("suspect_blank_removed:"))
+        self.assertEqual(l2[6], "duplicate_pages: 2")
+
+    def test_no_duplicate_line_when_none(self):
+        self.assertNotIn("duplicate_pages", build(self.pages()))
+        self.assertNotIn("dup-of", build(self.pages()))
+
     def test_unchecked(self):
         self.assertIn("page_check: unchecked", build(self.pages(), page_check="unchecked"))
 

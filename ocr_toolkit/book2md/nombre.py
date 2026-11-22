@@ -199,7 +199,9 @@ def analyze(
                 "count": d,
                 "exact": exact,
             }
-            if d == 1 and len(between) >= 1 and not cand[ea + 1]:
+            # 両面スキャンで紙が 1 枚抜けると 2 ページ続けて欠ける。1 ページだけの欠けは、
+            # スキャナの白紙ページ自動削除で本の白紙ページが消えたものとみなす
+            if d == 1:
                 suspects.append(gap)
             else:
                 missing.append(gap)

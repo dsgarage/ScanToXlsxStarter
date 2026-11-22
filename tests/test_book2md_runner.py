@@ -74,8 +74,10 @@ class FakeEngines:
 
 # 30 ページ: PDF 1〜2 は前付け(無番号)、PDF 3 から印字 1 から
 OK_PRINTED = {i: i - 2 for i in range(3, 31)}
-# 29 ページ: 前後のページも読めている本文の途中(印字 13)が 1 ページ抜けた筋書き
-MISSING_PRINTED = {**{i: i - 2 for i in range(3, 15)}, **{i: i - 1 for i in range(15, 30)}}
+# 28 ページ: 前後のページも読めている本文の途中(印字 13、14)が連続 2 ページ抜けた筋書き
+MISSING_PRINTED = {**{i: i - 2 for i in range(3, 15)}, **{i: i for i in range(15, 29)}}
+# 30 ページ: 印字 5〜9 の 5 ページが 2 回出る二重スキャンの筋書き(PDF 12〜16 が PDF 7〜11 の重複)
+DUP_PRINTED = {**{i: i - 2 for i in range(3, 12)}, **{i: i - 7 for i in range(12, 31)}}
 
 
 @unittest.skipUnless(HAVE_LIBS, "Pillow / pypdfium2 が無い")
@@ -139,14 +141,15 @@ class RunnerTest(unittest.TestCase):
         from ocr_toolkit.book2md.runner import run
 
         pdf = self.dir / "欠け 本.pdf"
-        make_pdf(pdf, 29)
+        make_pdf(pdf, 28)
         eng = FakeEngines(MISSING_PRINTED)
         rep = run([str(pdf)], self.opts(), eng)
         book = rep["books"][0]
         self.assertEqual(book["status"], "missing")
         self.assertFalse(pdf.exists())
         self.assertTrue((self.dir / "PGX_欠け 本.pdf").exists())
-        self.assertEqual(book["check"]["missing"][0]["exact"], [13])
+        self.assertEqual(book["check"]["missing"][0]["exact"], [13, 14])
+        self.assertEqual(book["check"]["missing"][0]["count"], 2)
         self.assertEqual(eng.full.calls, 0)
         self.assertFalse(list((self.dir / "work").glob("*/ocr")))
         self.assertFalse((self.dir / "欠け 本.md").exists())
@@ -178,7 +181,7 @@ class RunnerTest(unittest.TestCase):
         from ocr_toolkit.book2md.runner import run
 
         pdf = self.dir / "欠け 本.pdf"
-        make_pdf(pdf, 29)
+        make_pdf(pdf, 28)
         eng = FakeEngines(MISSING_PRINTED)
         rep = run([str(pdf)], self.opts(check_only=True, rename_missing=True), eng)
         self.assertEqual(rep["books"][0]["status"], "missing")
@@ -187,6 +190,78 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(eng.full.calls, 0)
         self.assertFalse(list((self.dir / "work").glob("*/ocr")))
         self.assertFalse((self.dir / "欠け 本.md").exists())
+
+    def test_one_page_gap_is_suspect_and_ocr_continues(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "疑い 本.pdf"
+        make_pdf(pdf, 29)
+        one_gap = {**{i: i - 2 for i in range(3, 15)}, **{i: i - 1 for i in range(15, 30)}}
+        eng = FakeEngines(one_gap)
+        rep = run([str(pdf)], self.opts(), eng)
+        self.assertEqual(rep["books"][0]["status"], "ok")
+        self.assertEqual(len(rep["books"][0]["check"]["suspect_blank_removed"]), 1)
+        self.assertTrue(pdf.exists())
+        self.assertGreater(eng.full.calls, 0)
+
+    def test_stale_blank_in_index_is_ignored(self):
+        from ocr_toolkit.book2md.common import atomic_write_json, read_json
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 d.pdf"
+        make_pdf(pdf, 30)
+        eng = FakeEngines(OK_PRINTED)
+        rep = run([str(pdf)], self.opts(), eng)
+        self.assertEqual(eng.full.calls, 30)
+        wd = self.dir / "work" / rep["books"][0]["job_id"]
+        idx = read_json(wd / "pages" / "index.json", None)
+        for e in idx:
+            e["blank"] = True
+        atomic_write_json(wd / "pages" / "index.json", idx)
+        (wd / "ocr").rename(wd / "ocr_old")
+
+        eng2 = FakeEngines(OK_PRINTED)
+        rep2 = run([str(pdf)], self.opts(), eng2)
+        self.assertEqual(rep2["books"][0]["status"], "ok")
+        self.assertEqual(eng2.full.calls, 30)
+        self.assertEqual(rep2["books"][0]["blank_pages"], [])
+        self.assertTrue((wd / "ocr_info.json").exists())
+
+    def test_blank_is_decided_by_ocr_result(self):
+        from ocr_toolkit.book2md.runner import run
+
+        class EmptyFull(FakeFull):
+            def run(self, image_path):
+                res = super().run(image_path)
+                if _page_no(image_path) == 5:
+                    res.update(texts=[], scores=[], boxes=[])
+                return res
+
+        pdf = self.dir / "本 e.pdf"
+        make_pdf(pdf, 30)
+        eng = FakeEngines(OK_PRINTED)
+        eng.full = EmptyFull()
+        rep = run([str(pdf)], self.opts(), eng)
+        self.assertEqual(rep["books"][0]["blank_pages"], [5])
+        md = (self.dir / "本 e.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- page: 5 printed: 3 blank -->", md)
+        self.assertEqual(md.count(" blank -->"), 1)
+
+    def test_duplicate_scan_is_marked_and_body_kept(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 f.pdf"
+        make_pdf(pdf, 30)
+        eng = FakeEngines(DUP_PRINTED)
+        rep = run([str(pdf)], self.opts(), eng)
+        self.assertEqual(rep["books"][0]["status"], "ok")
+        md = (self.dir / "本 f.md").read_text(encoding="utf-8")
+        self.assertIn("duplicate_pages: 5", md)
+        self.assertIn("<!-- page: 7 printed: 5 dup-of: 12 -->", md)
+        self.assertIn("<!-- page: 12 printed: 5 -->", md)
+        self.assertEqual(md.count(" dup-of: "), 5)
+        self.assertIn("ダミー本文7", md)
+        self.assertIn("ダミー本文12", md)
 
     def test_pgx_input_is_skipped(self):
         from ocr_toolkit.book2md.runner import list_inputs

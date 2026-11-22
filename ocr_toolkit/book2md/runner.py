@@ -237,7 +237,7 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     obs = []
     for e in index:
         mj = read_json(margin_dir / f"p{e['index']:04d}.json", {}) or {}
-        obs.append(PageObs(e["index"], list(mj.get("numbers", [])), bool(e.get("blank"))))
+        obs.append(PageObs(e["index"], list(mj.get("numbers", [])), False))
     check = analyze(obs, strict=opts.strict)
     check_dict = check.to_dict()
     atomic_write_json(wd / "check.json", check_dict)
@@ -285,15 +285,12 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     for k, e in enumerate(todo, start=1):
         i = e["index"]
         oj = ocr_dir / f"p{i:04d}.json"
-        if e.get("blank"):
-            res = {"w": e["w"], "h": e["h"], "texts": [], "scores": [], "boxes": [], "blank": True}
-        else:
-            res = engines.full.run(pages_dir / e["file"])
+        res = engines.full.run(pages_dir / e["file"])
         atomic_write_json(oj, res)
         if k % 20 == 0:
             rate = (time.time() - t0) / k
             _log(f"{job_id} ocr {k}/{len(todo)} 残り約 {int(rate * (len(todo) - k))} 秒")
-    if any(not e.get("blank") for e in todo):
+    if todo:
         # エンジンを使った回だけ情報を記録(キャッシュだけの再実行ではモデルを読み込まない)
         atomic_write_json(wd / "ocr_info.json", dict(engines.full.info))
     elapsed["ocr"] = round(time.time() - t0, 2)
@@ -306,11 +303,23 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
         boxes = to_boxes(res)
         per_page.append((boxes, float(res.get("h", 0)), page_orientation(boxes)))
     heads = collect_running_heads(per_page)
+    # 二重スキャン: 先のページ a を、後のページ b と同じ内容として印を付ける(本文は捨てない)
+    dup_of = {d["pdf_pages"][0]: d["pdf_pages"][1] for d in check.duplicates}
     entries = []
-    for e, res in zip(index, ocrs):
+    blank_pages: list[int] = []
+    for e, res, pb in zip(index, ocrs, per_page):
         pt = page_to_text(res, heads, keep_lines=opts.keep_lines)
+        is_blank = len(pb[0]) == 0
+        if is_blank:
+            blank_pages.append(e["index"])
         entries.append(
-            PageEntry(e["index"], check.printed_by_pdf.get(e["index"]), bool(e.get("blank")), pt.paragraphs)
+            PageEntry(
+                e["index"],
+                check.printed_by_pdf.get(e["index"]),
+                is_blank,
+                pt.paragraphs,
+                duplicate_of=dup_of.get(e["index"]),
+            )
         )
     full_info = read_json(wd / "ocr_info.json", {}) or {}
     unchecked = check.status == "uncertain"
@@ -333,6 +342,7 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     elapsed["md"] = round(time.time() - t0, 2)
 
     book["md"] = str(md_path)
+    book["blank_pages"] = blank_pages
     book["ocr"] = full_info or None
     book["status"] = STATUS_OK_UNCHECKED if unchecked else STATUS_OK
     atomic_write_json(wd / "state.json", book)

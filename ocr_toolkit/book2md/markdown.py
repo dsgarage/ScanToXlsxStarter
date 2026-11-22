@@ -13,6 +13,7 @@ class PageEntry:
     printed: int | None
     blank: bool
     paragraphs: list[str]
+    duplicate_of: int | None = None
 
 
 def build_markdown(
@@ -39,6 +40,9 @@ def build_markdown(
             for s in missing_suspects
         ]
         head.append(f"suspect_blank_removed: {json.dumps(items, ensure_ascii=False)}")
+    dup_count = sum(1 for pg in pages if pg.duplicate_of is not None)
+    if dup_count:
+        head.append(f"duplicate_pages: {dup_count}")
     head += [
         f"ocr_model: {ocr_info.get('model')}",
         f"ocr_device: {ocr_info.get('device')}",
@@ -50,7 +54,8 @@ def build_markdown(
     blocks: list[str] = ["\n".join(head)]
     for pg in pages:
         printed = "-" if pg.printed is None else str(pg.printed)
-        marker = f"<!-- page: {pg.index} printed: {printed}{' blank' if pg.blank else ''} -->"
+        dup = f" dup-of: {pg.duplicate_of}" if pg.duplicate_of is not None else ""
+        marker = f"<!-- page: {pg.index} printed: {printed}{dup}{' blank' if pg.blank else ''} -->"
         blocks.append(marker)
         for para in pg.paragraphs:
             text = fix_ocr(para) if apply_fix else para

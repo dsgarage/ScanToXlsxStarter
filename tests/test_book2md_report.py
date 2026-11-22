@@ -88,6 +88,12 @@ class ReportTest(unittest.TestCase):
         text = render_text(build_report([_book("a.pdf", "checked_ok", check=check)], started="s", finished="f"))
         self.assertIn("白紙 1 / ノンブル確認 8/30p", text)
 
+    def test_ok_memo_prefers_book_blank_pages(self):
+        check = {"anchored": 8, "total_pages": 30, "blank_pages": []}
+        b = _book("a.pdf", "ok", check=check, blank_pages=[4, 9])
+        text = render_text(build_report([b], started="s", finished="f"))
+        self.assertIn("白紙 2 / ノンブル確認 8/30p", text)
+
     def test_failed_error_truncated(self):
         text = render_text(build_report([_book("a.pdf", "failed", error="E" * 300)], started="s", finished="f"))
         self.assertIn("E" * 120, text)

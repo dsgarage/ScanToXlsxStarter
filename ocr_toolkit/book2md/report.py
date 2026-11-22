@@ -65,7 +65,8 @@ def _memo(book: dict) -> str:
             ("入れ替わり疑い", "order_suspects"),
             ("白紙", "blank_pages"),
         ):
-            n = len(check.get(key) or [])
+            src = book if key == "blank_pages" and book.get("blank_pages") else check
+            n = len(src.get(key) or [])
             if n:
                 parts.append(f"{label} {n}")
         fm = check.get("front_matter")
