@@ -67,6 +67,27 @@ class ReportTest(unittest.TestCase):
         text = render_text(build_report([_book("a.pdf", "ok", check=check)], started="s", finished="f"))
         self.assertIn("白紙削除疑い: 印字 120 / 印字 200〜201 のうち 1", text)
 
+    def test_checked_labels(self):
+        books = [_book("a.pdf", "checked_ok"), _book("b.pdf", "checked_uncertain")]
+        text = render_text(build_report(books, started="s", finished="f"))
+        self.assertIn("[検査OK]", text)
+        self.assertIn("[検査不能]", text)
+
+    def test_missing_memo_with_suspect_and_anchored(self):
+        check = {
+            "missing": [{"printed_from": 120, "printed_to": 121, "count": 2, "exact": [120, 121]}],
+            "suspect_blank_removed": [{"printed_from": 22, "printed_to": 22, "count": 1, "exact": None}],
+            "anchored": 25,
+            "total_pages": 30,
+        }
+        text = render_text(build_report([_book("a.pdf", "missing", check=check)], started="s", finished="f"))
+        self.assertIn("欠け: 印字 120,121 / 白紙削除疑い: 印字 22 / ノンブル確認 25/30p", text)
+
+    def test_ok_memo_anchored(self):
+        check = {"anchored": 8, "total_pages": 30, "blank_pages": [{}]}
+        text = render_text(build_report([_book("a.pdf", "checked_ok", check=check)], started="s", finished="f"))
+        self.assertIn("白紙 1 / ノンブル確認 8/30p", text)
+
     def test_failed_error_truncated(self):
         text = render_text(build_report([_book("a.pdf", "failed", error="E" * 300)], started="s", finished="f"))
         self.assertIn("E" * 120, text)

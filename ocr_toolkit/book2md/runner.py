@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import (
+    STATUS_CHECKED_OK,
+    STATUS_CHECKED_UNCERTAIN,
     STATUS_FAILED,
     STATUS_MISSING,
     STATUS_OK,
@@ -42,6 +44,7 @@ class Options:
     keep_lines: bool = False
     include_pgx: bool = False
     report: Path | None = None
+    check_only: bool = False
 
 
 class Engines:
@@ -239,6 +242,19 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     check_dict = check.to_dict()
     atomic_write_json(wd / "check.json", check_dict)
     book["check"] = check_dict
+
+    # 4b. 検査のみ: 結果を残して止まる(リネーム・本文 OCR・MD はしない)
+    if opts.check_only:
+        atomic_write_json(out_dir / f"{pdf.stem}.check.json", check_dict)
+        if check.status == "missing":
+            book["status"] = STATUS_MISSING
+        elif check.status == "uncertain":
+            book["status"] = STATUS_CHECKED_UNCERTAIN
+        else:
+            book["status"] = STATUS_CHECKED_OK
+        _log(f"{job_id} 検査のみ: {check.status}")
+        atomic_write_json(wd / "state.json", book)
+        return book
 
     # 5. 分岐
     if check.status == "missing":

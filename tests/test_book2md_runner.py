@@ -151,6 +151,43 @@ class RunnerTest(unittest.TestCase):
         self.assertFalse(list((self.dir / "work").glob("*/ocr")))
         self.assertFalse((self.dir / "欠け 本.md").exists())
 
+    def test_check_only_ok_then_full_run_uses_margin_cache(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 c.pdf"
+        make_pdf(pdf, 30)
+        eng = FakeEngines(OK_PRINTED)
+        rep = run([str(pdf)], self.opts(check_only=True), eng)
+        book = rep["books"][0]
+        self.assertEqual(book["status"], "checked_ok")
+        self.assertFalse((self.dir / "本 c.md").exists())
+        self.assertFalse(list((self.dir / "work").glob("*/ocr")))
+        self.assertEqual(eng.full.calls, 0)
+        self.assertGreater(eng.margin.calls, 0)
+        self.assertTrue((self.dir / "本 c.check.json").exists())
+        self.assertTrue(pdf.exists())
+
+        eng2 = FakeEngines(OK_PRINTED)
+        rep2 = run([str(pdf)], self.opts(check_only=False), eng2)
+        self.assertEqual(rep2["books"][0]["status"], "ok")
+        self.assertEqual(eng2.margin.calls, 0)
+        self.assertGreater(eng2.full.calls, 0)
+        self.assertTrue((self.dir / "本 c.md").exists())
+
+    def test_check_only_missing_does_not_rename(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "欠け 本.pdf"
+        make_pdf(pdf, 29)
+        eng = FakeEngines(MISSING_PRINTED)
+        rep = run([str(pdf)], self.opts(check_only=True, rename_missing=True), eng)
+        self.assertEqual(rep["books"][0]["status"], "missing")
+        self.assertTrue(pdf.exists())
+        self.assertFalse((self.dir / "PGX_欠け 本.pdf").exists())
+        self.assertEqual(eng.full.calls, 0)
+        self.assertFalse(list((self.dir / "work").glob("*/ocr")))
+        self.assertFalse((self.dir / "欠け 本.md").exists())
+
     def test_pgx_input_is_skipped(self):
         from ocr_toolkit.book2md.runner import list_inputs
 

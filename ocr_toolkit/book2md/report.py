@@ -6,6 +6,8 @@ STATUS_LABELS = {
     "ok_unchecked": "OK(未検査)",
     "missing": "欠けあり",
     "uncertain_skipped": "判定不能",
+    "checked_ok": "検査OK",
+    "checked_uncertain": "検査不能",
     "failed": "失敗",
     "skipped_done": "済み",
     "skipped_pgx": "PGX済",
@@ -41,10 +43,19 @@ def _memo(book: dict) -> str:
     check = book.get("check") or {}
     if status == "failed":
         return (book.get("error") or "")[:120]
+    anchored_txt = ""
+    if check.get("anchored") is not None and check.get("total_pages") is not None:
+        anchored_txt = f"ノンブル確認 {check['anchored']}/{check['total_pages']}p"
     if status == "missing":
         gaps = check.get("missing") or []
-        return "欠け: " + " / ".join(_gap_text(g) for g in gaps) if gaps else "欠け"
-    if status in ("ok", "ok_unchecked", "uncertain_skipped"):
+        memo = "欠け: " + " / ".join(_gap_text(g) for g in gaps) if gaps else "欠け"
+        sus = check.get("suspect_blank_removed") or []
+        if sus:
+            memo += " / 白紙削除疑い: " + " / ".join(_gap_text(g) for g in sus)
+        if anchored_txt:
+            memo += " / " + anchored_txt
+        return memo
+    if status in ("ok", "ok_unchecked", "uncertain_skipped", "checked_ok", "checked_uncertain"):
         parts: list[str] = []
         sus = check.get("suspect_blank_removed") or []
         if sus:
@@ -60,6 +71,8 @@ def _memo(book: dict) -> str:
         fm = check.get("front_matter")
         if fm:
             parts.append(f"前付け PDF {fm[0]}〜{fm[1]}")
+        if anchored_txt:
+            parts.append(anchored_txt)
         return " / ".join(parts)
     return ""
 

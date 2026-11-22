@@ -188,6 +188,7 @@ def _cmd_book2md(args) -> int:
         keep_lines=args.keep_lines,
         include_pgx=args.include_pgx,
         report=Path(args.report) if args.report else None,
+        check_only=args.check_only,
     )
     report = run(args.inputs, opts)
     return 1 if report["counts"].get("failed") else 0
@@ -315,6 +316,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="行を段落にまとめず 1 行 1 段落で出す")
     sp.add_argument("--include-pgx", dest="include_pgx", action="store_true",
                     help="PGX_ 始まりの PDF も処理する")
+    sp.add_argument("--check-only", dest="check_only", action="store_true",
+                    help="ページ欠けの検査だけ行う(OCR もリネームもしない)")
     sp.set_defaults(func=_cmd_book2md)
 
     sp = sub.add_parser("book2md-remote",
@@ -333,6 +336,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="誤字辞書 fix_ocr を適用する(既定は適用しない)")
     sp.add_argument("--keep-lines", dest="keep_lines", action="store_true")
     sp.add_argument("--include-pgx", dest="include_pgx", action="store_true")
+    sp.add_argument("--check-only", dest="check_only", action="store_true",
+                    help="ページ欠けの検査だけ行う(OCR もリネームもしない)")
     sp.set_defaults(func=_cmd_book2md_remote)
 
     return p

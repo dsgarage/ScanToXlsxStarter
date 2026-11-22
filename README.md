@@ -329,6 +329,14 @@ python3 -m ocr_toolkit.cli book2md-remote "<フォルダ>" --setup
 python3 -m ocr_toolkit.cli book2md-remote "<フォルダ>"
 ```
 
+検査だけ先に行いたいときは `--check-only` を付けます。
+
+```bash
+python3 -m ocr_toolkit.cli book2md-remote "<フォルダ>" --check-only
+```
+
+検査だけなら、欠けがあっても PDF をリネームせず、OCR も Markdown もしません。後で `--check-only` なしで実行すると、検査の結果はキャッシュから使われ、そのまま OCR に進みます。
+
 前提は次のとおりです。
 
 - ssh でパスワードなしに入れること。ホスト名の既定は `winpc` で、`--host` で変えられます
@@ -391,6 +399,8 @@ tool: ocr_toolkit book2md
 | OK(未検査) | ノンブルが読めず判定できなかったが、OCR して Markdown を作った |
 | 欠けあり | 欠けが見つかった。PDF を `PGX_` 始まりにリネームし、OCR はしていない |
 | 判定不能 | ノンブルが読めず、`--on-uncertain skip` のため OCR を飛ばした |
+| 検査OK | `--check-only` で検査し、欠けは見つからなかった(OCR はしていない) |
+| 検査不能 | `--check-only` で検査したが、ノンブルが読めず判定できなかった(OCR はしていない) |
 | 失敗 | 処理中にエラーが出た(理由は結果一覧に出ます) |
 | 済み | (遠隔の入口)Markdown が既にあり、今回は何もしなかった |
 | PGX済 | 入力が `PGX_` 始まりなので飛ばした(`--include-pgx` で処理します) |
@@ -430,6 +440,7 @@ tool: ocr_toolkit book2md
 | `--fix` | 誤字辞書 `fix_ocr` を適用する(既定は適用しない) |
 | `--keep-lines` | 行を段落にまとめず 1 行 1 段落で出す |
 | `--include-pgx` | `PGX_` 始まりの PDF も処理する |
+| `--check-only` | ページ欠けの検査だけ行う(OCR もリネームもしない) |
 
 `book2md-remote`(`input` は PDF またはフォルダ)
 
@@ -445,6 +456,7 @@ tool: ocr_toolkit book2md
 | `--fix` | 誤字辞書 `fix_ocr` を適用する(既定は適用しない) |
 | `--keep-lines` | 行を段落にまとめず 1 行 1 段落で出す |
 | `--include-pgx` | `PGX_` 始まりの PDF も処理する |
+| `--check-only` | ページ欠けの検査だけ行う(OCR もリネームもしない) |
 
 ### 検証用: ページを抜いた PDF を作る
 

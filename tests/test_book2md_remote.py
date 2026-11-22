@@ -76,6 +76,15 @@ class RunPsTest(unittest.TestCase):
         self.assertNotIn("--keep-lines", plain)
 
 
+class CheckOnlyPsTest(unittest.TestCase):
+    def test_check_only_flag(self):
+        on = remote_run_ps(["a"], "r", _args(check_only=True))
+        off = remote_run_ps(["a"], "r", _args())
+        self.assertIn(" --check-only", on)
+        self.assertNotIn("--check-only", off)
+        self.assertNotIn("--check-only", remote_run_ps(["a"], "r", _args(check_only=False)))
+
+
 class DecideTodoTest(unittest.TestCase):
     def test_done_and_todo(self):
         with tempfile.TemporaryDirectory() as td:
@@ -206,3 +215,44 @@ class CollectBackupTest(unittest.TestCase):
                 self.assertEqual(files[0].read_text(encoding="utf-8"), "校正済みのダミー")
         finally:
             remote._run, remote._fetch_check = orig_run, orig_fetch
+
+
+class CollectCheckOnlyTest(unittest.TestCase):
+    def _collect(self, status, check_only):
+        orig_run, orig_fetch = remote._run, remote._fetch_check
+        fetched = []
+        remote._run = lambda cmd, what: None
+        remote._fetch_check = lambda *a, **k: fetched.append(a)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                folder = Path(td)
+                state = folder / "_book2md"
+                state.mkdir()
+                pdf = folder / "本.pdf"
+                pdf.write_bytes(b"x")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    book = remote._collect_book("winpc", pdf, "abc", {"status": status}, folder, state,
+                                                check_only=check_only)
+                return book, pdf.exists(), (folder / "PGX_本.pdf").exists(), (folder / "本.md").exists(), len(fetched)
+        finally:
+            remote._run, remote._fetch_check = orig_run, orig_fetch
+
+    def test_missing_check_only_does_not_rename(self):
+        book, pdf_exists, pgx_exists, md_exists, n = self._collect("missing", True)
+        self.assertEqual(book["status"], "missing")
+        self.assertTrue(pdf_exists)
+        self.assertFalse(pgx_exists)
+        self.assertEqual(n, 1)
+
+    def test_missing_normal_renames(self):
+        book, pdf_exists, pgx_exists, md_exists, n = self._collect("missing", False)
+        self.assertFalse(pdf_exists)
+        self.assertTrue(pgx_exists)
+
+    def test_checked_statuses_fetch_check_only(self):
+        for st in ("checked_ok", "checked_uncertain"):
+            book, pdf_exists, pgx_exists, md_exists, n = self._collect(st, True)
+            self.assertEqual(book["status"], st)
+            self.assertTrue(pdf_exists)
+            self.assertFalse(md_exists)
+            self.assertEqual(n, 1)

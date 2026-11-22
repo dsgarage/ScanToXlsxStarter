@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import (
+    STATUS_CHECKED_OK,
+    STATUS_CHECKED_UNCERTAIN,
     PGX_PREFIX,
     STATUS_FAILED,
     STATUS_MISSING,
@@ -102,6 +104,7 @@ def remote_run_ps(job_ids: list[str], run_id: str, o) -> str:
         + (" --strict" if getattr(o, "strict", False) else "")
         + (" --fix" if getattr(o, "apply_fix", False) else "")
         + (" --keep-lines" if getattr(o, "keep_lines", False) else "")
+        + (" --check-only" if getattr(o, "check_only", False) else "")
         + "; exit $LASTEXITCODE"
     )
     return ps
@@ -307,7 +310,8 @@ def _main(args) -> int:
         os.replace(rep_local, state_dir / "remote_report.json")
         by_id = {b.get("job_id"): b for b in remote_report.get("books", [])}
         for pdf, jid in todo:
-            results.append(_collect_book(host, pdf, jid, by_id.get(jid), folder, state_dir))
+            results.append(_collect_book(host, pdf, jid, by_id.get(jid), folder, state_dir,
+                                         check_only=getattr(args, "check_only", False)))
 
     # 11. まとめ
     books = results + [_skip_book(p, j, STATUS_SKIPPED_DONE, state, folder) for p, j in done] \
@@ -326,7 +330,8 @@ def _main(args) -> int:
     return 1 if any(b.get("status") == STATUS_FAILED for b in books) else 0
 
 
-def _collect_book(host: str, pdf: Path, jid: str, rb: dict | None, folder: Path, state_dir: Path) -> dict:
+def _collect_book(host: str, pdf: Path, jid: str, rb: dict | None, folder: Path, state_dir: Path,
+                  check_only: bool = False) -> dict:
     """遠隔の 1 冊分の結果を Air 側に取り込み、Air のパスに書き換えた dict を返す。"""
     if rb is None:
         rb = {"job_id": jid, "pages": None, "status": STATUS_FAILED,
@@ -346,6 +351,10 @@ def _collect_book(host: str, pdf: Path, jid: str, rb: dict | None, folder: Path,
                 _log(f"既存の MD を退避しました: {moved}")
             os.replace(tmp, dest)
             book["md"] = str(dest)
+            _fetch_check(host, jid, pdf, state_dir)
+        elif status in (STATUS_CHECKED_OK, STATUS_CHECKED_UNCERTAIN):
+            _fetch_check(host, jid, pdf, state_dir)
+        elif status == STATUS_MISSING and check_only:
             _fetch_check(host, jid, pdf, state_dir)
         elif status == STATUS_MISSING:
             _fetch_check(host, jid, pdf, state_dir)
