@@ -25,6 +25,7 @@ from .common import (
     STATUS_SKIPPED_PGX,
     atomic_write_json,
     atomic_write_text,
+    backup_existing,
     job_id_for,
     pgx_name,
     read_json,
@@ -340,6 +341,9 @@ def _collect_book(host: str, pdf: Path, jid: str, rb: dict | None, folder: Path,
             tmp = state_dir / f"tmp_{jid}.md"
             _run(scp_down(host, f"{REMOTE_BASE}/out/{jid}.md", tmp), "MD の取得")
             dest = folder / f"{pdf.stem}.md"
+            moved = backup_existing(dest, state_dir / "backup", tmp.read_bytes())
+            if moved:
+                _log(f"既存の MD を退避しました: {moved}")
             os.replace(tmp, dest)
             book["md"] = str(dest)
             _fetch_check(host, jid, pdf, state_dir)

@@ -177,3 +177,32 @@ class MiscTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CollectBackupTest(unittest.TestCase):
+    def test_existing_md_is_backed_up(self):
+        orig_run = remote._run
+        orig_fetch = remote._fetch_check
+
+        def fake_run(cmd, what):
+            Path(cmd[-1]).write_text("新しいダミー", encoding="utf-8")
+
+        remote._run = fake_run
+        remote._fetch_check = lambda *a, **k: None
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                folder = Path(td)
+                state = folder / "_book2md"
+                state.mkdir()
+                pdf = folder / "本.pdf"
+                pdf.write_bytes(b"x")
+                (folder / "本.md").write_text("校正済みのダミー", encoding="utf-8")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    book = remote._collect_book("winpc", pdf, "abc", {"status": "ok"}, folder, state)
+                self.assertEqual(book["status"], "ok")
+                self.assertEqual((folder / "本.md").read_text(encoding="utf-8"), "新しいダミー")
+                files = list((state / "backup").iterdir())
+                self.assertEqual(len(files), 1)
+                self.assertEqual(files[0].read_text(encoding="utf-8"), "校正済みのダミー")
+        finally:
+            remote._run, remote._fetch_check = orig_run, orig_fetch

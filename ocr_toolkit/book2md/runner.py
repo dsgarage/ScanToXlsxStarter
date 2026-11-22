@@ -17,6 +17,7 @@ from .common import (
     PGX_PREFIX,
     atomic_write_json,
     atomic_write_text,
+    backup_existing,
     job_id_for,
     pgx_name,
     read_json,
@@ -308,6 +309,9 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
         apply_fix=opts.apply_fix,
     )
     md_path = out_dir / f"{pdf.stem}.md"
+    moved = backup_existing(md_path, wd / "backup", md.encode("utf-8"))
+    if moved:
+        _log(f"{job_id} 既存の MD を退避しました: {moved}")
     atomic_write_text(md_path, md)
     atomic_write_json(out_dir / f"{pdf.stem}.check.json", check_dict)
     elapsed["md"] = round(time.time() - t0, 2)

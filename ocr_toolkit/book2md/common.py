@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 PGX_PREFIX = "PGX_"
@@ -42,6 +43,29 @@ def atomic_write_bytes(path: str | Path, data: bytes) -> None:
 
 def atomic_write_text(path: str | Path, text: str) -> None:
     atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def backup_existing(dest, backup_dir, new_data: bytes) -> Path | None:
+    """dest が既にあり、中身が new_data と違うときだけ、backup_dir へ移して移動先を返す。
+    dest が無い、または中身が同じなら何もせず None。既存のバックアップは上書きしない。"""
+    dest = Path(dest)
+    if not dest.is_file():
+        return None
+    try:
+        if dest.read_bytes() == new_data:
+            return None
+    except OSError:
+        return None
+    bdir = Path(backup_dir)
+    bdir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target = bdir / f"{dest.stem}.{stamp}{dest.suffix}"
+    n = 1
+    while target.exists():
+        n += 1
+        target = bdir / f"{dest.stem}.{stamp}_{n}{dest.suffix}"
+    os.replace(dest, target)
+    return target
 
 
 def atomic_write_json(path: str | Path, obj) -> None:

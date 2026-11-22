@@ -112,6 +112,29 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(eng2.margin.calls, 0)
         self.assertEqual(eng2.full.calls, 0)
 
+    def test_existing_md_is_backed_up_only_when_changed(self):
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 a.pdf"
+        make_pdf(pdf, 30)
+        rep = run([str(self.dir)], self.opts(), FakeEngines(OK_PRINTED))
+        job_id = rep["books"][0]["job_id"]
+        md_path = self.dir / "本 a.md"
+        original = md_path.read_text(encoding="utf-8")
+        backup = self.dir / "work" / job_id / "backup"
+
+        # 書き換えずに再実行 → 退避なし
+        run([str(self.dir)], self.opts(), FakeEngines(OK_PRINTED))
+        self.assertFalse(backup.exists() and any(backup.iterdir()))
+
+        # 書き換えて再実行 → OCR の内容に戻り、書き換えた内容が退避される
+        md_path.write_text("校正済みのダミー", encoding="utf-8")
+        run([str(self.dir)], self.opts(), FakeEngines(OK_PRINTED))
+        self.assertEqual(md_path.read_text(encoding="utf-8"), original)
+        files = list(backup.iterdir())
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].read_text(encoding="utf-8"), "校正済みのダミー")
+
     def test_missing_renames_and_skips_ocr(self):
         from ocr_toolkit.book2md.runner import run
 
