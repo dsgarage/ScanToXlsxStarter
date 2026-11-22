@@ -1,0 +1,77 @@
+import unittest
+
+from ocr_toolkit.book2md.report import build_report, render_text
+
+
+def _book(name, status, **kw):
+    d = {"job_id": "abc", "name": name, "pages": 10, "status": status, "check": None, "error": None}
+    d.update(kw)
+    return d
+
+
+class ReportTest(unittest.TestCase):
+    def test_counts(self):
+        books = [_book("a.pdf", "ok"), _book("b.pdf", "ok"), _book("c.pdf", "missing")]
+        r = build_report(books, started="s", finished="f")
+        self.assertEqual(r["counts"], {"ok": 2, "missing": 1})
+        self.assertEqual(r["version"], 1)
+        self.assertEqual(len(r["books"]), 3)
+
+    def test_status_labels(self):
+        statuses = ["ok", "ok_unchecked", "missing", "uncertain_skipped", "failed", "skipped_done", "skipped_pgx"]
+        books = [_book(f"{s}.pdf", s) for s in statuses]
+        text = render_text(build_report(books, started="s", finished="f"))
+        for label in ["[OK]", "[OK(未検査)]", "[欠けあり]", "[判定不能]", "[失敗]", "[済み]", "[PGX済]"]:
+            self.assertIn(label, text)
+        self.assertTrue(text.startswith("book2md 結果 f"))
+
+    def test_missing_exact(self):
+        check = {"missing": [{"printed_from": 120, "printed_to": 121, "count": 2, "exact": [120, 121]}]}
+        text = render_text(build_report([_book("a.pdf", "missing", check=check)], started="s", finished="f"))
+        self.assertIn("欠け: 印字 120,121", text)
+
+    def test_missing_range_without_exact(self):
+        check = {"missing": [{"printed_from": 120, "printed_to": 121, "count": 1, "exact": None}]}
+        text = render_text(build_report([_book("a.pdf", "missing", check=check)], started="s", finished="f"))
+        self.assertIn("欠け: 印字 120〜121 のうち 1", text)
+
+    def test_missing_single_and_multiple(self):
+        check = {
+            "missing": [
+                {"printed_from": 22, "printed_to": 22, "count": 1, "exact": None},
+                {"printed_from": 120, "printed_to": 121, "count": 1, "exact": None},
+            ]
+        }
+        text = render_text(build_report([_book("a.pdf", "missing", check=check)], started="s", finished="f"))
+        self.assertIn("欠け: 印字 22 / 印字 120〜121 のうち 1", text)
+
+    def test_ok_memo_nonzero_only(self):
+        check = {
+            "suspect_blank_removed": [{"printed_from": 22, "printed_to": 22, "count": 1, "exact": None}],
+            "duplicates": [],
+            "order_suspects": [{}, {}],
+            "blank_pages": [],
+            "front_matter": [1, 4],
+        }
+        text = render_text(build_report([_book("a.pdf", "ok", check=check)], started="s", finished="f"))
+        self.assertIn("白紙削除疑い: 印字 22 / 入れ替わり疑い 2 / 前付け PDF 1〜4", text)
+        self.assertNotIn("重複", text)
+
+    def test_suspect_blank_removed_with_numbers(self):
+        check = {
+            "suspect_blank_removed": [
+                {"printed_from": 120, "printed_to": 120, "count": 1, "exact": [120]},
+                {"printed_from": 200, "printed_to": 201, "count": 1, "exact": None},
+            ]
+        }
+        text = render_text(build_report([_book("a.pdf", "ok", check=check)], started="s", finished="f"))
+        self.assertIn("白紙削除疑い: 印字 120 / 印字 200〜201 のうち 1", text)
+
+    def test_failed_error_truncated(self):
+        text = render_text(build_report([_book("a.pdf", "failed", error="E" * 300)], started="s", finished="f"))
+        self.assertIn("E" * 120, text)
+        self.assertNotIn("E" * 121, text)
+
+
+if __name__ == "__main__":
+    unittest.main()
