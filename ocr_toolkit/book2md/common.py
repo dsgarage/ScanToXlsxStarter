@@ -10,6 +10,9 @@ from pathlib import Path
 PGX_PREFIX = "PGX_"
 MARGIN_RATIO = 0.12  # 余白帯(上下)の高さ比。nombre と layout で共通
 
+# 本文 OCR の結果の形や設定を変えたら上げる。1 = 行の向き判定あり(長い行が抜ける)
+OCR_CACHE_VERSION = 2
+
 STATUS_OK = "ok"  # 欠けなし → MD 出力
 STATUS_OK_UNCHECKED = "ok_unchecked"  # ノンブルが読めず判定不能だが OCR した
 STATUS_MISSING = "missing"  # 欠けあり → PGX_、OCR しない

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from ocr_toolkit.book2md import remote
+from ocr_toolkit.book2md.common import OCR_CACHE_VERSION
 from ocr_toolkit.book2md.remote import (
     cmd_book2md_remote,
     decide_todo,
@@ -95,13 +96,37 @@ class DecideTodoTest(unittest.TestCase):
             (folder / "a b.md").write_text("m")
             # c は状態が ok でも MD が無いので再処理
             state = {
-                "ja": {"status": "ok"},
-                "jb": {"status": "missing"},
-                "jc": {"status": "ok_unchecked"},
+                "ja": {"status": "ok", "cache_version": OCR_CACHE_VERSION},
+                "jb": {"status": "missing", "cache_version": OCR_CACHE_VERSION},
+                "jc": {"status": "ok_unchecked", "cache_version": OCR_CACHE_VERSION},
             }
             todo, done = decide_todo([(a, "ja"), (b, "jb"), (c, "jc")], state, folder)
             self.assertEqual([j for _, j in done], ["ja"])
             self.assertEqual([j for _, j in todo], ["jb", "jc"])
+
+    def _one(self, rec, redo=False):
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            p = folder / "a.pdf"
+            p.write_bytes(b"x")
+            (folder / "a.md").write_text("m")
+            return decide_todo([(p, "ja")], {"ja": rec}, folder, redo=redo)
+
+    def test_current_cache_version_is_done(self):
+        todo, done = self._one({"status": "ok", "cache_version": OCR_CACHE_VERSION})
+        self.assertEqual((len(todo), len(done)), (0, 1))
+
+    def test_old_cache_version_is_todo(self):
+        todo, done = self._one({"status": "ok", "cache_version": 1})
+        self.assertEqual((len(todo), len(done)), (1, 0))
+
+    def test_missing_cache_version_is_todo(self):
+        todo, done = self._one({"status": "ok"})
+        self.assertEqual((len(todo), len(done)), (1, 0))
+
+    def test_redo_is_todo(self):
+        todo, done = self._one({"status": "ok", "cache_version": OCR_CACHE_VERSION}, redo=True)
+        self.assertEqual((len(todo), len(done)), (1, 0))
 
     def test_path_input_computes_job_id(self):
         with tempfile.TemporaryDirectory() as td:

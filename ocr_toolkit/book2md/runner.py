@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import (
+    OCR_CACHE_VERSION,
     STATUS_CHECKED_OK,
     STATUS_CHECKED_UNCERTAIN,
     STATUS_FAILED,
@@ -36,9 +37,6 @@ from .nombre import PageObs, analyze, extract_numbers
 from .pages import extract_pages, make_margin_composite, page_stats
 from .report import build_report, render_text
 
-
-# 本文 OCR の結果の形や設定を変えたら上げる。1 = 行の向き判定あり(長い行が抜ける)
-OCR_CACHE_VERSION = 2
 
 
 @dataclass
@@ -392,6 +390,7 @@ def _process_book(pdf: Path, opts: Options, engines, book: dict) -> dict:
     book["md"] = str(md_path)
     book["blank_pages"] = blank_pages
     book["unread_lines"] = unread_lines
+    book["cache_version"] = OCR_CACHE_VERSION
     book["unread_pages"] = unread_pages
     book["ocr"] = full_info or None
     book["status"] = STATUS_OK_UNCHECKED if unchecked else STATUS_OK

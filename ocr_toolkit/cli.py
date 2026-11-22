@@ -338,6 +338,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--include-pgx", dest="include_pgx", action="store_true")
     sp.add_argument("--check-only", dest="check_only", action="store_true",
                     help="ページ欠けの検査だけ行う(OCR もリネームもしない)")
+    sp.add_argument("--redo", action="store_true",
+                    help="済みの本も処理し直す(既存の Markdown は中身が変われば退避される)")
     sp.set_defaults(func=_cmd_book2md_remote)
 
     return p

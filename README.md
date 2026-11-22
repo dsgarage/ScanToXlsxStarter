@@ -422,6 +422,7 @@ tool: ocr_toolkit book2md
 
 - OCR の結果はページ単位でキャッシュされます。途中で止まっても、同じコマンドをもう一度実行すると続きから再開します(単体の `book2md` は入力のフォルダの `_book2md_work/<job_id>/`、遠隔の入口は Windows 側の `book2md\work` に置きます)
 - 同じ名前の Markdown が既にあり、中身が今回の結果と違うときは、上書きする前に退避します。校正済みの Markdown を失わないためです。退避先は、単体の `book2md` では `_book2md_work/<job_id>/backup/`、`book2md-remote` では PDF のフォルダの `_book2md/backup/` で、名前は `<元の名前>.<日時>.md` です。中身が同じなら退避しません
+- 手元の入口 `book2md-remote` は、OCR の設定の版が上がると、済みだった本も自動で処理し直します。`--redo` を付けると、版が同じでも済みの本を処理し直せます
 - 本文 OCR の設定の版が変わると、古いキャッシュは `ocr.old-<日時>` に改名され(消しません)、本文 OCR を作り直します
 - `book2md-remote` を Ctrl-C で止めると、終了コード 130 で終わります
 
@@ -459,6 +460,7 @@ tool: ocr_toolkit book2md
 | `--keep-lines` | 行を段落にまとめず 1 行 1 段落で出す |
 | `--include-pgx` | `PGX_` 始まりの PDF も処理する |
 | `--check-only` | ページ欠けの検査だけ行う(OCR もリネームもしない) |
+| `--redo` | 済みの本も処理し直す(既存の Markdown は中身が変われば退避されます) |
 
 ### 検証用: ページを抜いた PDF を作る
 

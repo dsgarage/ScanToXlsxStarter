@@ -319,6 +319,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(book["unread_lines"], 2)
         self.assertEqual(book["unread_pages"], [5])
 
+    def test_book_records_cache_version(self):
+        from ocr_toolkit.book2md.common import OCR_CACHE_VERSION
+        from ocr_toolkit.book2md.runner import run
+
+        pdf = self.dir / "本 i.pdf"
+        make_pdf(pdf, 30)
+        rep = run([str(pdf)], self.opts(), FakeEngines(OK_PRINTED))
+        self.assertEqual(rep["books"][0]["cache_version"], OCR_CACHE_VERSION)
+
     def test_pgx_input_is_skipped(self):
         from ocr_toolkit.book2md.runner import list_inputs
 

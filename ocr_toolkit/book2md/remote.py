@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import (
+    OCR_CACHE_VERSION,
     STATUS_CHECKED_OK,
     STATUS_CHECKED_UNCERTAIN,
     PGX_PREFIX,
@@ -110,11 +111,13 @@ def remote_run_ps(job_ids: list[str], run_id: str, o) -> str:
     return ps
 
 
-def decide_todo(pdfs, state: dict, folder: Path) -> tuple[list, list]:
+def decide_todo(pdfs, state: dict, folder: Path, redo: bool = False) -> tuple[list, list]:
     """(今回処理する [(pdf, job_id)], 済みで飛ばす [(pdf, job_id)])。
 
     pdfs の要素は (Path, job_id) か Path(その場で job_id を計算)。
-    済み = state[job_id]["status"] が ok/ok_unchecked かつ folder/<stem>.md が存在。
+    済み = state[job_id]["status"] が ok/ok_unchecked かつ folder/<stem>.md が存在、
+    かつ state の cache_version が今の OCR_CACHE_VERSION と等しい(記録が無い古い state は済みとみなさない)、
+    かつ redo が偽。
     """
     todo: list = []
     done: list = []
@@ -123,8 +126,11 @@ def decide_todo(pdfs, state: dict, folder: Path) -> tuple[list, list]:
             pdf, jid = item
         else:
             pdf, jid = item, job_id_for(item)
-        st = (state.get(jid) or {}).get("status")
-        if st in (STATUS_OK, STATUS_OK_UNCHECKED) and (Path(folder) / f"{pdf.stem}.md").exists():
+        rec = state.get(jid) or {}
+        st = rec.get("status")
+        if (not redo and st in (STATUS_OK, STATUS_OK_UNCHECKED)
+                and rec.get("cache_version") == OCR_CACHE_VERSION
+                and (Path(folder) / f"{pdf.stem}.md").exists()):
             done.append((pdf, jid))
         else:
             todo.append((pdf, jid))
@@ -232,7 +238,7 @@ def _main(args) -> int:
             continue
         seen.add(jid)
         pairs.append((p, jid))
-    todo, done = decide_todo(pairs, state, folder)
+    todo, done = decide_todo(pairs, state, folder, redo=getattr(args, "redo", False))
 
     if getattr(args, "dry_run", False):
         print("処理する:")
@@ -323,7 +329,8 @@ def _main(args) -> int:
     print(text, flush=True)
     for b in results:
         state[b["job_id"]] = {"name": b["name"], "status": b["status"],
-                              "pages": b.get("pages"), "updated": _now()}
+                              "pages": b.get("pages"), "updated": _now(),
+                              "cache_version": b.get("cache_version")}
     atomic_write_json(state_path, state)
 
     # 12. 終了コード
